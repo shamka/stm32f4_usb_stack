@@ -1,0 +1,12 @@
+.mxproject
+EWARM/123/Obj/
+EWARM/123/Exe/
+EWARM/123/List/
+*.dep
+*.dni
+*.wsdt
+*.dbgdt
+*.wspos
+*.ewt
+EWARM/settings/
+*.scratch
