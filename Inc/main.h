@@ -64,6 +64,8 @@
 #define BOOT1_GPIO_Port GPIOB
 #define BT_LED1_Pin GPIO_PIN_11
 #define BT_LED1_GPIO_Port GPIOG
+#define BT_RESET_Pin GPIO_PIN_12
+#define BT_RESET_GPIO_Port GPIOG
 #define BT_LED2_Pin GPIO_PIN_13
 #define BT_LED2_GPIO_Port GPIOG
 #define BT_KEY_Pin GPIO_PIN_15
