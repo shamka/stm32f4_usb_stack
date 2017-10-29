@@ -58,7 +58,7 @@
 /* Variables -----------------------------------------------------------------*/
 osThreadId defaultTaskHandle;
 osThreadId uartCdcTxHandle;
-osSemaphoreId cdcSendComplHandle;
+osSemaphoreId uartCdcHandle;
 
 /* USER CODE BEGIN Variables */
 
@@ -88,9 +88,9 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_MUTEX */
 
   /* Create the semaphores(s) */
-  /* definition and creation of cdcSendCompl */
-  osSemaphoreDef(cdcSendCompl);
-  cdcSendComplHandle = osSemaphoreCreate(osSemaphore(cdcSendCompl), 1);
+  /* definition and creation of uartCdc */
+  osSemaphoreDef(uartCdc);
+  uartCdcHandle = osSemaphoreCreate(osSemaphore(uartCdc), 1);
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
@@ -102,7 +102,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityBelowNormal, 0, 128);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityBelowNormal, 0, 80);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* definition and creation of uartCdcTx */

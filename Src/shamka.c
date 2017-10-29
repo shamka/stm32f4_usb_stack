@@ -11,24 +11,69 @@ uint8_t lineCoding[16];
 uint8_t uartStart,uartEnd,uartStop;
 extern UART_HandleTypeDef huart3;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
-
+extern osMutexId uartCdcHandle;
 
 //CONSTS
+const uint8_t hidDesc[]={
+0x05,0x01,
+0x15,0x00,
+0x09,0x04,
+0xa1,0x01,
+0x05,0x02,
+0x09,0xbb,
+0x15,0x81,
+0x25,0x7f,
+0x75,0x08,
+0x95,0x01,
+0x81,0x02,
+0x05,0x01,
+0x09,0x01,
+0xa1,0x00,
+0x09,0x30,
+0x09,0x31,
+0x95,0x02,
+0x81,0x02,
+0xc0,0x09,
+0x39,0x15,
+0x00,0x25,
+0x30,0x35,
+0x00,0x46,
+0x0e,0x01,
+0x65,0x14,
+0x75,0x04,
+0x95,0x01,
+0x81,0x02,
+0x05,0x09,
+0x19,0x01,
+0x29,0x04,
+0x15,0x00,
+0x25,0x01,
+0x75,0x01,
+0x95,0x04,
+0x55,0x00,
+0x65,0x00,
+0x81,0x02,
+0xc0,
+};
 const uint8_t conf1Desc[]={
-  9,2,(9+8+ 9+5+4+5+5+7 + 9+7+7 + 9),0,(3),1,0,0x80,100, //CONFIG
+  9,2,(9+8+ 9+5+4+5+5+7 + 9+7+7 + 9+(9)+7+7),0,(3),1,0,0x80,100, //CONFIG
     8,11,0,2,2,2,0,2,        //IAD
       9,4,0,0,1,2,2,1,0,     //INTERFACE 0
         5,0x24,0,0x10,0x01,
         4,0x24,2,2,
         5,0x24,6,0,1,
         5,0x24,1,3,1,
-        7,5,0x82,3,64,0,0xFF,
+        7,5,CDC_INT,3,64,0,0xFF,
         
       9,4,1,0,2,0x0A,0,0,0, //INTRFACE 1
-        7,5,0x01,2,64,0,0,
-        7,5,0x81,2,64,0,0,
+        7,5,CDC_OUT,2,64,0,0,
+        7,5,CDC_IN,2,64,0,0,
         
-      9,4,2,0,0,0x00,0,0,3, //INTRFACE 2
+      9,4,2,0,2,0x03,0,0,3, //INTRFACE 2
+        9,0x21,0x11,0x01,0x00,0x01,0x22,sizeof(hidDesc)&255,sizeof(hidDesc)>>8,
+        
+        7,5,HID_INT_IN,3,64,0,32,
+        7,5,HID_INT_OUT,3,64,0,32,
 };
 const usbDescriptor6 devDesc={18,1,0x200,0xEF,0x02,0x01,64,0x0483,0x5741,0x200,0,0,1,1};
 const uint8_t STRINGS_0[]={4,3,9,4};
@@ -50,15 +95,21 @@ void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd){
 
   HAL_PCD_EP_Close(hpcd,0x80);
   HAL_PCD_EP_Close(hpcd,0x00);
-  HAL_PCD_EP_Close(hpcd,0x81);
-  HAL_PCD_EP_Close(hpcd,0x01);
-  HAL_PCD_EP_Close(hpcd,0x82);
+  HAL_PCD_EP_Close(hpcd,CDC_OUT);
+  HAL_PCD_EP_Close(hpcd,CDC_IN);
+  HAL_PCD_EP_Close(hpcd,CDC_INT);
+  HAL_PCD_EP_Close(hpcd,HID_INT_OUT);
+  HAL_PCD_EP_Close(hpcd,HID_INT_IN);
   
   HAL_PCD_EP_Open(hpcd,0x00,64,0);
   HAL_PCD_EP_Open(hpcd,0x80,64,0);
-  HAL_PCD_EP_Open(hpcd,0x01,64,2);
-  HAL_PCD_EP_Open(hpcd,0x81,64,2);
-  HAL_PCD_EP_Open(hpcd,0x82,64,3);
+  
+  HAL_PCD_EP_Open(hpcd,CDC_OUT,64,2);
+  HAL_PCD_EP_Open(hpcd,CDC_IN,64,2);
+  
+  HAL_PCD_EP_Open(hpcd,CDC_INT,64,3);
+  HAL_PCD_EP_Open(hpcd,HID_INT_OUT,64,3);
+  HAL_PCD_EP_Open(hpcd,HID_INT_IN,64,3);
   
 
       
@@ -88,13 +139,13 @@ void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd){
 #endif
 }
 void shamkaUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(struct usbStt*),EtypeCallback type){
+  epnum&=0x7f;
 #ifdef _DEBUG
   if(len==0)
-  printf("Ptrans%d: ZPL\r\n",epnum);
+  printf("Ptrans%d: ZLP\r\n",epnum);
     else
   printf("Ptrans%d: %d\r\n",epnum,len);
 #endif
-  epnum&=0x7f;
   usbIN[epnum].cb=callback;
   usbIN[epnum].type=type;
   usbIN[epnum].buff=buff;
@@ -104,13 +155,13 @@ void shamkaUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(str
   HAL_PCD_EP_Transmit(&hpcd_USB_OTG_FS,epnum,buff,len);
 };
 void shamkaUSBrecv(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(struct usbStt*),EtypeCallback type){
+  epnum&=0x7f;
 #ifdef _DEBUG
   if(len==0)
-  printf("Precv%d: ZPL\r\n",epnum);
+  printf("Precv%d: ZLP\r\n",epnum);
     else
   printf("Precv%d: %d\r\n",epnum,len);
 #endif
-  epnum&=0x7f;
   usbOUT[epnum].cb=callback;
   usbOUT[epnum].type=type;
   usbOUT[epnum].buff=buff;
@@ -129,7 +180,7 @@ void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
   
 #ifdef _DEBUG
   if(ep.xfer_count==0)
-  printf("Recv%d: ZPL\r\n",epnum);
+  printf("Recv%d: ZLP\r\n",epnum);
     else
   printf("Recv%d: %d\r\n",epnum,ep.xfer_count);
 #endif
@@ -170,7 +221,7 @@ void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
 
 #ifdef _DEBUG
   if(ep.xfer_count==0)
-  printf("Trans%d: ZPL\r\n",epnum);
+  printf("Trans%d: ZLP\r\n",epnum);
     else
   printf("Trans%d: %d\r\n",epnum,ep.xfer_count);
 #endif
@@ -209,7 +260,14 @@ void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
 };
 
 //SETUP USB STAGE WITH INLINES
-inline void shamkaUSbCDCSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
+inline static void shamkaUSbHIDSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
+  switch(setup->bRequest){
+  case 0x0A://SET IDLE
+    shamkaUSBtrans(0,0,0,0,NONE);
+    break;
+  }
+}
+inline static void shamkaUSbCDCSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
   switch(setup->bRequest){
   case 0x20://SET LINE CODING
     shamkaUSBrecv(0,&lineCoding[8],MIN(7,setup->wLength),&shamka_setLineCoding,NONE);
@@ -222,7 +280,7 @@ inline void shamkaUSbCDCSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t 
     //HAL_GPIO_WritePin(BT_KEY_GPIO_Port,BT_KEY_Pin,lineCoding[7]&1?GPIO_PIN_SET:GPIO_PIN_RESET);
     //HAL_GPIO_WritePin(LED_GPIO_Port,LED_Pin,lineCoding[7]&1?GPIO_PIN_SET:GPIO_PIN_RESET);
     shamkaUSBtrans(0,0,0,0,NONE);
-    shamkaUSBrecv(0x01,cdcInput,64,&cdcCallback,NONE);
+    shamkaUSBrecv(CDC_OUT,cdcInput,64,&cdcCallback,NONE);
     break;
   }
 }
@@ -230,6 +288,11 @@ inline static void usbSStandart(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_
   uint8_t* desc;
   uint16_t len;
   switch(setup->bRequest){
+  case 1://CLEAR FEATURE
+    shamkaUSBtrans(0,0,0,0,NONE);
+    
+    //shamkaUSBtrans(HID_INT_IN,&lineCoding[15],1,0,NONE);
+    return;
   case 5:
     //SET ADDRESS
     HAL_PCD_SetAddress(hpcd, setup->wValue);
@@ -247,6 +310,7 @@ inline static void usbSStandart(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_
       case 3:desc=(uint8_t*)STRINGS_3;len=sizeof(STRINGS_3);break;
       default:goto usbStall_01;
       };break;
+    case 0x22:desc=(uint8_t*)&hidDesc;len=sizeof(hidDesc);break;
     default:goto usbStall_01;
     }
     shamkaUSBtrans(0,desc,MIN(len,setup->wLength),0,NONE);
@@ -268,6 +332,9 @@ inline static void usbSClass(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t I
     case 0:
     case 1:
       shamkaUSbCDCSetup(hpcd,setup,IN);
+      break;
+    case 2:
+      shamkaUSbHIDSetup(hpcd,setup,IN);
       break;
     }
     break;
@@ -343,20 +410,37 @@ void cdcCallback(struct usbStt* p){
   HAL_UART_Transmit_IT(&huart3,p->buff,p->sended);
 };
 void cdcCallback2(struct usbStt* p){
+  int16_t len;
   uartEnd+=p->sended;
+  p->sended=0;
   if(uartEnd>=sizeof(uartInput)-4)
     uartEnd-=(sizeof(uartInput)-4);
+  
+  len = uartStart - uartEnd;
+  if(len==0 || !uartStop){
+    if(len>0){
+      shamkaUSBtrans(CDC_IN,&uartInput[uartEnd],len,&cdcCallback2,NONE);
+    }
+    else if(len<0){
+      shamkaUSBtrans(CDC_IN,&uartInput[uartEnd],sizeof(uartInput)-4 - uartEnd,&cdcCallback2,NONE);
+    }
+    else{
+      osSemaphoreRelease(uartCdcHandle);
+    }
+  }
+  else{
+    
+  }
+  
 };
 
 
 //USART
 
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-  shamkaUSBrecv(0x01,cdcInput,64,&cdcCallback,NONE);
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
+  shamkaUSBrecv(CDC_OUT,cdcInput,64,&cdcCallback,NONE);
 }
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
   uartStart++;
   if(uartStart>=UARTINPUT_BUFF*2)uartStart=0;
   if(uartStart!=uartEnd){
@@ -368,39 +452,34 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 //FREERTOS
 void uartToCdc(void const * argument){
-  int16_t len;
   for(;;){
     osDelay(50);
-    len = uartStart - uartEnd;
-    if(len==0 || !uartStop){
-      if(len>0){
-        shamkaUSBtrans(CDC_IN,&uartInput[uartEnd],len,&cdcCallback2,NONE);
-      }
-      else if(len<0){
-        shamkaUSBtrans(CDC_IN,&uartInput[uartEnd],sizeof(uartInput)-4 - uartEnd,&cdcCallback2,NONE);
-      }
-    }
-    else{
-      
-    }
+    osSemaphoreWait(uartCdcHandle,osWaitForever);
+    cdcCallback2(&usbIN[CDC_IN&0x7f]);
   }
 };
-
 void StartDefaultTask(void const * argument){
+  static uint8_t leds=0xff,oldLeds=0;
   memset(lineCoding,0,sizeof(lineCoding));
    
   HAL_PCD_Start(&hpcd_USB_OTG_FS);
   HAL_PCDEx_SetRxFiFo(&hpcd_USB_OTG_FS, 0x80);
   HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 0, 0x40);
-  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 1, 0x80);
+  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 1, 0x40);
+  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 2, 0x40);
+  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 3, 0x40);
 
-  osDelay(5000);
+  osDelay(3000);
   
   
   for(;;){
-    osDelay(10);
-    HAL_GPIO_WritePin(LED_GPIO_Port,LED_Pin,HAL_GPIO_ReadPin(BT_LED2_GPIO_Port,BT_LED2_Pin));
-    HAL_GPIO_WritePin(BT_KEY_GPIO_Port,BT_KEY_Pin,HAL_GPIO_ReadPin(BOOT1_GPIO_Port,BOOT1_Pin));
-    //printf("led1: %s\r\nled2: %s\r\n\r\n",HAL_GPIO_ReadPin(BT_LED1_GPIO_Port,BT_LED1_Pin)?"O":"F",HAL_GPIO_ReadPin(BT_LED2_GPIO_Port,BT_LED2_Pin)?"O":"F");
+    osDelay(1000);
+    leds=HAL_GPIO_ReadPin(LED_GPIO_Port,LED_Pin)?1:0;
+    leds|=HAL_GPIO_ReadPin(LED_GPIO_Port,LED_Pin)?1<<1:0;
+    leds|=HAL_GPIO_ReadPin(BOOT1_GPIO_Port,BOOT1_Pin)?1<<2:0;
+    if(oldLeds!=leds){
+      oldLeds=leds;
+      //shamkaUSBtrans(HID_INT_IN,(uint8_t*)&devDesc,1,0,NONE);
+    }
   }
 }
