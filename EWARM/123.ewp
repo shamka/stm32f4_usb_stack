@@ -349,7 +349,7 @@
                     <state>$PROJ_DIR$/../Middlewares/Third_Party/FreeRTOS/Source/include</state>
                     <state>$PROJ_DIR$/../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS</state>
                     <state>$PROJ_DIR$/../Drivers/CMSIS/Include</state>
-                <state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /><state /></option>
+                <state /><state /><state /><state /><state /><state /><state /><state /></option>
                 <option>
                     <name>CCStdIncCheck</name>
                     <state>0</state>
@@ -1033,6 +1033,9 @@
         </group>
         <group>
             <name>User</name>
+            <file>
+                <name>$PROJ_DIR$\..\Src\dma.c</name>
+            </file>
             <file>
                 <name>$PROJ_DIR$\..\Src\freertos.c</name>
             </file>

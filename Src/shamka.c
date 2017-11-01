@@ -1,17 +1,46 @@
 #include "shamka.h"
 
-//VARS
-usbStt usbIN[4];
-usbStt usbOUT[4];
-EtypeStage0 ep0Stage;
-uint8_t usb_state;
-uint8_t cdcInput[CDCINPUT_BUFF+4];
-uint8_t uartInput[UARTINPUT_BUFF*2+4];
-uint8_t lineCoding[16];
-uint8_t uartStart,uartEnd,uartStop;
-extern UART_HandleTypeDef huart3;
-extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
-extern osMutexId uartCdcHandle;
+//TYPEDEFS
+typedef enum{
+  SETUP=0,
+  DATA=1,
+  ANS=2,
+}EtypeStage0;
+
+#pragma pack(push, 1)
+typedef struct {
+  uint8_t bmRequestType;
+  uint8_t bRequest;
+  uint16_t wValue;
+  uint16_t wIndex;
+  uint16_t wLength;
+}usbSetup;
+typedef struct {
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint16_t bcdUSB;
+  uint8_t bDeviceClass;
+  uint8_t bDeviceSubClass;
+  uint8_t bDeviceProtocol;
+  uint8_t bMaxPacketSize;
+  uint16_t idVendor;
+  uint16_t idProduct;
+  uint16_t bcdDevice;
+  uint8_t iManufacturer;
+  uint8_t iProduct;
+  uint8_t iSerialNumber;
+  uint8_t bNumConfigurations;
+}usbDescriptor6;
+typedef struct usbStt{
+  int32_t sended;
+  int32_t left;
+  Tcallback cb;
+  uint8_t *buff;
+  EtypeCallback type;
+  uint8_t enp;
+} usbStt;
+#pragma pack(pop)
+
 
 //CONSTS
 const uint8_t hidDesc[]={
@@ -81,8 +110,21 @@ const uint8_t STRINGS_1[]= {2+2 *8,3,'0',0,'0',0,'0',0,'0',0,'0',0,'0',0,'0',0,'
 const uint8_t STRINGS_2[]= {2+2*11,3,'V',0,'C',0,'P',0,'-',0,'S',0,'T',0,'M',0,'3',0,'2',0,'F',0,'4',0};
 const uint8_t STRINGS_3[]= {2+2*11,3,'H',0,'I',0,'D',0,'-',0,'S',0,'T',0,'M',0,'3',0,'2',0,'F',0,'4',0};
 
+//VARS
+usbStt usbIN[4];
+usbStt usbOUT[4];
+EtypeStage0 ep0Stage;
+uint8_t usb_state;
+uint8_t cdcInput[CDCINPUT_BUFF+4];
+uint8_t uartInput[UARTINPUT_BUFF*2+4];
+uint8_t lineCoding[16];
+volatile uint8_t uartBuff,uartLen1,uartLen2;
+extern UART_HandleTypeDef huart3;
+extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 //FUNCTIONS 
+void shamka_setLineCoding(struct usbStt* p);
+void cdcCallback(struct usbStt* p);
 
 
 
@@ -111,8 +153,8 @@ void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd){
   HAL_PCD_EP_Open(hpcd,HID_INT_OUT,64,3);
   HAL_PCD_EP_Open(hpcd,HID_INT_IN,64,3);
   
-
-      
+  HAL_PCD_EP_Flush(hpcd,0x83);
+  HAL_PCD_EP_ClrStall(hpcd,0x83);
 };
 void HAL_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd){
   if(!(usb_state&1))return;
@@ -400,80 +442,85 @@ void shamka_setSpeed(){
 void shamka_setLineCoding(struct usbStt* p){
   p=&usbOUT[p->enp&0x0f];
   if(p->sended==7){
-    HAL_UART_AbortReceive_IT(&huart3);
+    HAL_DMA_Abort(huart3.hdmarx);
+    uartBuff=0;
     shamka_setSpeed();
-    uartStart=uartEnd=uartStop=0;
-    HAL_UART_Receive_IT(&huart3, &uartInput[uartStart], 1);
+    printf("UART3 start DMA\r\n");
+    HAL_UART_Receive_DMA(&huart3, &uartInput[uartBuff], 64);
   }
 };
 void cdcCallback(struct usbStt* p){
-  HAL_UART_Transmit_IT(&huart3,p->buff,p->sended);
+  HAL_UART_Transmit_DMA(&huart3,p->buff,p->sended);
 };
-void cdcCallback2(struct usbStt* p){
-  int16_t len;
-  uartEnd+=p->sended;
-  p->sended=0;
-  if(uartEnd>=sizeof(uartInput)-4)
-    uartEnd-=(sizeof(uartInput)-4);
-  
-  len = uartStart - uartEnd;
-  if(len==0 || !uartStop){
-    if(len>0){
-      shamkaUSBtrans(CDC_IN,&uartInput[uartEnd],len,&cdcCallback2,NONE);
-    }
-    else if(len<0){
-      shamkaUSBtrans(CDC_IN,&uartInput[uartEnd],sizeof(uartInput)-4 - uartEnd,&cdcCallback2,NONE);
-    }
-    else{
-      osSemaphoreRelease(uartCdcHandle);
-    }
-  }
-  else{
-    
-  }
-  
-};
-
 
 //USART
+void processMessage(uint8_t* buff,uint16_t len){
+  printf("UART3 processMessage\r\n");
+  shamkaUSBtrans(CDC_IN,buff,len,0,ZLPF);
+  if(uartBuff==0){
+    uartBuff=64;
+  }
+  else{
+    uartBuff=0;
+  }
+  HAL_UART_Receive_DMA(&huart3, &uartInput[uartBuff], 64);
+}
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
   shamkaUSBrecv(CDC_OUT,cdcInput,64,&cdcCallback,NONE);
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
-  uartStart++;
-  if(uartStart>=UARTINPUT_BUFF*2)uartStart=0;
-  if(uartStart!=uartEnd){
-    HAL_UART_Receive_IT(&huart3, &uartInput[uartStart], 1);
+  printf("UART3 DMA COMPLETE\r\n");
+  processMessage(huart->pRxBuffPtr, huart->RxXferSize);
+}
+void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
+  static uint16_t rxXferCount = 0;
+  printf("UART3 IDLE\r\n");
+  if(huart->hdmarx != NULL)
+  {
+    rxXferCount = huart->RxXferSize - __HAL_DMA_GET_COUNTER(huart->hdmarx);
+    if(rxXferCount==64){
+      printf("UART3 IDLE 64\r\n");
+      return;
+    };
+    
+    /* Determine how many items of data have been received */
+    //rxXferCount = huart->RxXferSize - __HAL_DMA_GET_COUNTER(huart->hdmarx);
+    HAL_UART_Abort(huart);
+    huart->RxXferCount = 0;
+    /* Check if a transmit process is ongoing or not */
+    if(huart->gState == HAL_UART_STATE_BUSY_TX_RX)
+    {
+      huart->gState = HAL_UART_STATE_BUSY_TX;
+    }
+    else
+    {
+      huart->gState = HAL_UART_STATE_READY;
+    }
+    processMessage(huart->pRxBuffPtr, rxXferCount);
   }
-  else uartStop=1;
   
 }
 
+
 //FREERTOS
-void uartToCdc(void const * argument){
-  for(;;){
-    osDelay(50);
-    osSemaphoreWait(uartCdcHandle,osWaitForever);
-    cdcCallback2(&usbIN[CDC_IN&0x7f]);
-  }
-};
 void StartDefaultTask(void const * argument){
   static uint8_t leds=0xff,oldLeds=0;
   memset(lineCoding,0,sizeof(lineCoding));
    
-  HAL_PCD_Start(&hpcd_USB_OTG_FS);
+  //HAL_PCD_Start(&hpcd_USB_OTG_FS);
   HAL_PCDEx_SetRxFiFo(&hpcd_USB_OTG_FS, 0x80);
-  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 0, 0x40);
-  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 1, 0x40);
-  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 2, 0x40);
-  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 3, 0x40);
-
+  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 0, 0x30);
+  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 1, 0x30);
+  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 2, 0x30);
+  HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 3, 0x30);
+  HAL_PCD_Start(&hpcd_USB_OTG_FS);
+  
   osDelay(3000);
   
   
   for(;;){
-    osDelay(1000);
+    osDelay(5000);
     leds=HAL_GPIO_ReadPin(LED_GPIO_Port,LED_Pin)?1:0;
     leds|=HAL_GPIO_ReadPin(LED_GPIO_Port,LED_Pin)?1<<1:0;
     leds|=HAL_GPIO_ReadPin(BOOT1_GPIO_Port,BOOT1_Pin)?1<<2:0;
