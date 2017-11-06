@@ -57,6 +57,7 @@
 
 /* Variables -----------------------------------------------------------------*/
 osThreadId defaultTaskHandle;
+osTimerId statChangeHandle;
 
 /* USER CODE BEGIN Variables */
 
@@ -64,6 +65,7 @@ osThreadId defaultTaskHandle;
 
 /* Function prototypes -------------------------------------------------------*/
 void StartDefaultTask(void const * argument);
+void statChangeTimer(void const * argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -87,6 +89,11 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
   /* USER CODE END RTOS_SEMAPHORES */
+
+  /* Create the timer(s) */
+  /* definition and creation of statChange */
+  osTimerDef(statChange, statChangeTimer);
+  statChangeHandle = osTimerCreate(osTimer(statChange), osTimerPeriodic, NULL);
 
   /* USER CODE BEGIN RTOS_TIMERS */
   /* start timers, add new ones, ... */
@@ -117,6 +124,14 @@ __weak void StartDefaultTask(void const * argument)
     osDelay(1);
   }
   /* USER CODE END StartDefaultTask */
+}
+
+/* statChangeTimer function */
+__weak void statChangeTimer(void const * argument)
+{
+  /* USER CODE BEGIN statChangeTimer */
+  
+  /* USER CODE END statChangeTimer */
 }
 
 /* USER CODE BEGIN Application */

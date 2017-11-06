@@ -1,25 +1,28 @@
 #ifndef __shamka_H
 #define __shamka_H
 
+#ifdef STM32F407xx
+#include <stm32f4xx.h>
+#else
+#error "UNDEFINED CHIP"
+#endif
+
+
 #define MIN(a,b) a<b?a:b
 #define MAX(a,b) a>b?a:b
-#define _DEBUG
-
-
-#include "gpio.h"
-#include "FreeRTOS.h"
-#include "task.h"
-#include "cmsis_os.h"
-#include <string.h>
 
 #define CDCINPUT_BUFF 64
 #define UARTINPUT_BUFF 2560
 
-#define CDC_IN 0x83
-#define CDC_OUT 0x03
-#define CDC_INT 0x81
-#define HID_INT_IN 0x82
-#define HID_INT_OUT 0x02
+#define CDC_IN 0x82
+#define CDC_OUT 0x02
+#define CDC_INT 0x83
+#define CDC_IF1 1
+#define CDC_IF2 2
+
+#define HID_INT_IN 0x81
+#define HID_INT_OUT 0x01
+#define HID_IF 0
 
 
 //TYPEDEFS
