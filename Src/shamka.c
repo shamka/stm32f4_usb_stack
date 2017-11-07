@@ -6,11 +6,13 @@
 #include "cmsis_os.h"
 
 #include <string.h> 
+#include <stdlib.h>
 
 #define MAGIC_UARTRX_BUFF 64
 #define MAGIC_HID_BUFF 64
 #define MAGIC_HID_UPDATE 32*4
 #define MAGIC_HID_TIMEOUT (uint32_t)(30*(1000/(MAGIC_HID_UPDATE)))
+
 
 //TYPEDEFS
 typedef enum{
@@ -20,6 +22,12 @@ typedef enum{
 } EtypeStage0;
 
 #pragma pack(push, 1)
+typedef struct{
+    uint8_t *buff;
+    uint32_t len;
+    uint8_t epnum;
+} usbTransStruct;
+
 typedef struct {
     uint8_t bmRequestType;
     uint8_t bRequest;
@@ -184,6 +192,10 @@ volatile uint8_t uartBuff,uartLen1,uartLen2;
 extern UART_HandleTypeDef huart3;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 extern osTimerId statChangeHandle;
+extern osThreadId usbTransHandle;
+extern osMessageQId usbTransmitQueueHandle;
+extern osSemaphoreId goToSendUSBHandle;
+
 
 uint8_t hidInput[MAGIC_HID_BUFF+4];
 hidData hiddata;
@@ -266,6 +278,14 @@ void shamkaUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(str
     usbIN[epnum].sended=len;
     HAL_PCD_EP_Transmit(&hpcd_USB_OTG_FS,epnum,buff,len);
 };
+void shUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len){
+    
+    usbTransStruct *tr = (usbTransStruct*)malloc(sizeof(usbTransStruct));
+    tr->buff=buff;
+    tr->len=len;
+    tr->epnum=epnum;
+    osMessagePut(usbTransmitQueueHandle,(uint32_t)tr,osWaitForever);
+};
 void shamkaUSBrecv(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(struct usbStt*),EtypeCallback type){
     epnum&=0x7f;
 #ifdef _DEBUG_USB_STACK
@@ -309,6 +329,7 @@ void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
 #ifdef _DEBUG_USB_STACK
             printf("Precv%d: ZLP\r\n",epnum);
 #endif
+            epS->type=NONE;
             HAL_PCD_EP_Receive(hpcd,epnum,0,0);
         }
         else{
@@ -349,6 +370,7 @@ void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
 #ifdef _DEBUG_USB_STACK
             printf("Ptrans%d: ZLP\r\n",epnum);
 #endif
+            epS->type=NONE;
             HAL_PCD_EP_Transmit(hpcd,epnum,0,0);
         }
         else{
@@ -585,38 +607,33 @@ void cdcCallback(struct usbStt* p){
 };
 
 //USART
-void processMessage(uint8_t* buff,uint16_t len){
-#ifdef _DEBUG_USB_UART
-    printf("UART3 processMessage\r\n");
-#endif
-    shamkaUSBtrans(CDC_IN,buff,len,0,ZLPF);
-    if(uartBuff==0){
-        uartBuff=MAGIC_UARTRX_BUFF;
-    }
-    else{
-        uartBuff=0;
-    }
-    HAL_UART_Receive_DMA(&huart3, &uartInput[uartBuff], MAGIC_UARTRX_BUFF);
-}
-
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
     shamkaUSBrecv(CDC_OUT,cdcInput,64,&cdcCallback,NONE);
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+    if(uartBuff==0){
+        HAL_UART_Receive_DMA(&huart3, &uartInput[MAGIC_UARTRX_BUFF], MAGIC_UARTRX_BUFF);
+        shUSBtrans(CDC_IN,&uartInput[0],MAGIC_UARTRX_BUFF);
+        uartBuff=MAGIC_UARTRX_BUFF;
+    }
+    else{
+        HAL_UART_Receive_DMA(&huart3, &uartInput[0], MAGIC_UARTRX_BUFF);
+        //shamkaUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],MAGIC_UARTRX_BUFF,0,NONE);
+        shUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],MAGIC_UARTRX_BUFF);
+        uartBuff=0;
+    }
 #ifdef _DEBUG_USB_UART
     printf("UART3 DMA COMPLETE\r\n");
 #endif
-    processMessage(huart->pRxBuffPtr, huart->RxXferSize);
+
 }
 void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
     static uint16_t rxXferCount = 0;
-#ifdef _DEBUG_USB_UART
-    printf("UART3 IDLE\r\n");
-#endif
     if(huart->hdmarx != NULL)
     {
         rxXferCount = huart->RxXferSize - __HAL_DMA_GET_COUNTER(huart->hdmarx);
-        if(rxXferCount==64){
+        if(rxXferCount==0){
+            shUSBtrans(CDC_IN,0,0);
 #ifdef _DEBUG_USB_UART
             printf("UART3 IDLE 64\r\n");
 #endif
@@ -636,9 +653,23 @@ void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
         {
             huart->gState = HAL_UART_STATE_READY;
         }
-        processMessage(huart->pRxBuffPtr, rxXferCount);
+        if(uartBuff==0){
+            HAL_UART_Receive_DMA(&huart3, &uartInput[MAGIC_UARTRX_BUFF], MAGIC_UARTRX_BUFF);
+            //shamkaUSBtrans(CDC_IN,&uartInput[0],rxXferCount,0,NONE);
+            shUSBtrans(CDC_IN,&uartInput[0],rxXferCount);
+            uartBuff=MAGIC_UARTRX_BUFF;
+        }
+        else{
+            HAL_UART_Receive_DMA(&huart3, &uartInput[0], MAGIC_UARTRX_BUFF);
+            //shamkaUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],rxXferCount,0,NONE);
+            shUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],rxXferCount);
+            uartBuff=0;
+        }
+#ifdef _DEBUG_USB_UART
+    printf("UART3 IDLE\r\n");
+#endif
+
     }
-    
 }
 
 
@@ -655,9 +686,26 @@ void StartDefaultTask(void const * argument){
     HAL_PCD_Start(&hpcd_USB_OTG_FS);
     
     for(;;){
-        osDelay(50);
+        osDelay(400);
         if(timeout==0xFFFFFFFF){
             HAL_GPIO_TogglePin(LED_GPIO_Port,LED_Pin);
         }
     }
+}
+
+
+usbTransStruct *foFree;
+void memFreeAfterSend(struct usbStt* p){
+    free(foFree);
+    osSemaphoreRelease(goToSendUSBHandle);
+}
+void usbTransmit(void const * argument)
+{
+  for(;;)
+  {
+    osSemaphoreWait(goToSendUSBHandle,osWaitForever);
+    osEvent q = osMessageGet(usbTransmitQueueHandle,osWaitForever);
+    foFree = (usbTransStruct*)q.value.p;
+    shamkaUSBtrans(foFree->epnum,foFree->buff,foFree->len,&memFreeAfterSend,NONE);
+  }
 }

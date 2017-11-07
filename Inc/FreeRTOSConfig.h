@@ -101,13 +101,12 @@
 #define configCPU_CLOCK_HZ                       ( SystemCoreClock )
 #define configTICK_RATE_HZ                       ((TickType_t)1000)
 #define configMAX_PRIORITIES                     ( 7 )
-#define configMINIMAL_STACK_SIZE                 ((uint16_t)80)
-#define configTOTAL_HEAP_SIZE                    ((size_t)2048)
+#define configMINIMAL_STACK_SIZE                 ((uint16_t)90)
+#define configTOTAL_HEAP_SIZE                    ((size_t)2560)
 #define configMAX_TASK_NAME_LEN                  ( 12 )
 #define configUSE_16_BIT_TICKS                   0
 #define configUSE_MUTEXES                        1
 #define configQUEUE_REGISTRY_SIZE                8
-#define configUSE_COUNTING_SEMAPHORES            1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION  1
 
 /* Co-routine definitions. */
@@ -118,7 +117,7 @@
 #define configUSE_TIMERS                         1
 #define configTIMER_TASK_PRIORITY                ( 6 )
 #define configTIMER_QUEUE_LENGTH                 1
-#define configTIMER_TASK_STACK_DEPTH             88
+#define configTIMER_TASK_STACK_DEPTH             90
 
 /* Set the following definitions to 1 to include the API function, or zero
 to exclude the API function. */

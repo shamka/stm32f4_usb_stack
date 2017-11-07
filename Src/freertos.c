@@ -57,7 +57,10 @@
 
 /* Variables -----------------------------------------------------------------*/
 osThreadId defaultTaskHandle;
+osThreadId usbTransHandle;
+osMessageQId usbTransmitQueueHandle;
 osTimerId statChangeHandle;
+osSemaphoreId goToSendUSBHandle;
 
 /* USER CODE BEGIN Variables */
 
@@ -65,6 +68,7 @@ osTimerId statChangeHandle;
 
 /* Function prototypes -------------------------------------------------------*/
 void StartDefaultTask(void const * argument);
+void usbTransmit(void const * argument);
 void statChangeTimer(void const * argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
@@ -86,6 +90,11 @@ void MX_FREERTOS_Init(void) {
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
 
+  /* Create the semaphores(s) */
+  /* definition and creation of goToSendUSB */
+  osSemaphoreDef(goToSendUSB);
+  goToSendUSBHandle = osSemaphoreCreate(osSemaphore(goToSendUSB), 1);
+
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
   /* USER CODE END RTOS_SEMAPHORES */
@@ -101,12 +110,21 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityBelowNormal, 0, 80);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityBelowNormal, 0, 90);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+
+  /* definition and creation of usbTrans */
+  osThreadDef(usbTrans, usbTransmit, osPriorityBelowNormal, 0, 90);
+  usbTransHandle = osThreadCreate(osThread(usbTrans), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
+
+  /* Create the queue(s) */
+  /* definition and creation of usbTransmitQueue */
+  osMessageQDef(usbTransmitQueue, 8, uint64_t);
+  usbTransmitQueueHandle = osMessageCreate(osMessageQ(usbTransmitQueue), NULL);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -124,6 +142,18 @@ __weak void StartDefaultTask(void const * argument)
     osDelay(1);
   }
   /* USER CODE END StartDefaultTask */
+}
+
+/* usbTransmit function */
+__weak void usbTransmit(void const * argument)
+{
+  /* USER CODE BEGIN usbTransmit */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END usbTransmit */
 }
 
 /* statChangeTimer function */
