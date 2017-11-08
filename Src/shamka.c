@@ -200,7 +200,6 @@ extern osSemaphoreId goToSendUSBHandle;
 uint8_t hidInput[MAGIC_HID_BUFF+4];
 hidData hiddata;
 uint32_t timeout;
-uint8_t buff3[3]={3,0,0};
 
 //FUNCTIONS 
 void shamka_setLineCoding(struct usbStt* p);
@@ -512,15 +511,25 @@ void HAL_PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd){
 
 
 //HID
+void hidSendRep3(){
+  static uint8_t buff3[3]={3,0,0};
+  buff3[1]=(hiddata.mask);
+  buff3[2]=0;
+  if(HAL_GPIO_ReadPin(LED_GPIO_Port,      LED_Pin))      buff3[2]|=(1<<0);
+  if(HAL_GPIO_ReadPin(BOOT1_GPIO_Port,    BOOT1_Pin))    buff3[2]|=(1<<1);
+  if(HAL_GPIO_ReadPin(BT_LED1_GPIO_Port,  BT_LED1_Pin))  buff3[2]|=(1<<4);
+  if(HAL_GPIO_ReadPin(BT_LED2_GPIO_Port,  BT_LED2_Pin))  buff3[2]|=(1<<5);
+  if(HAL_GPIO_ReadPin(BT_RESET_GPIO_Port, BT_RESET_Pin)) buff3[2]|=(1<<6);
+  if(HAL_GPIO_ReadPin(BT_KEY_GPIO_Port,   BT_KEY_Pin))   buff3[2]|=(1<<7);
+  shUSBtrans(HID_INT_IN,buff3,sizeof(buff3));
+}
 void statChangeTimer(void const * argument){
     static uint8_t oldDataValue[2]={1,0};
     timeout++;
     if(timeout>MAGIC_HID_TIMEOUT){
         timeout=0xFFFFFFFF;
         osTimerStop(statChangeHandle);
-        buff3[1]=(hiddata.mask);
-        buff3[2]=(hiddata.data);
-        shamkaUSBtrans(HID_INT_IN,buff3,sizeof(buff3),0,NONE);
+        hidSendRep3();
         return;
     }
     if(hiddata.mask==0)return;
@@ -533,7 +542,7 @@ void statChangeTimer(void const * argument){
     if((hiddata.mask&(1<<7))&& HAL_GPIO_ReadPin(BT_KEY_GPIO_Port,   BT_KEY_Pin))   hiddata.data|=(1<<7);
     if(oldDataValue[1]!=hiddata.data){
         oldDataValue[1]=hiddata.data;
-        shamkaUSBtrans(HID_INT_IN,oldDataValue,sizeof(oldDataValue),0,NONE);
+        shUSBtrans(HID_INT_IN,oldDataValue,sizeof(oldDataValue));
     }
 }
 void cdcCallback2(struct usbStt* p){
@@ -550,9 +559,7 @@ void cdcCallback2(struct usbStt* p){
         break;
     case 4:
         if(p->sended!=2)break;
-        buff3[1]=(hiddata.mask);
-        buff3[2]=(hiddata.data);
-        shamkaUSBtrans(HID_INT_IN,buff3,sizeof(buff3),0,NONE);
+        hidSendRep3();
         break;
     case 6:
         if(p->sended!=3)break;
