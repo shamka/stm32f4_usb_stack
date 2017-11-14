@@ -99,6 +99,7 @@ const uint8_t hidDesc[]={
     0x06, 0x00, 0xff,              // USAGE_PAGE (Generic Desktop)
     0x09, 0x01,                    // USAGE (Vendor Usage 1)
     0xa1, 0x01,                    // COLLECTION (Application)
+    
     0x85, 0x01,                    //   REPORT_ID (1)
     0x09, 0x01,                    //   USAGE (Vendor Usage 1)
     0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
@@ -106,6 +107,7 @@ const uint8_t hidDesc[]={
     0x75, 0x01,                    //   REPORT_SIZE (1)
     0x95, 0x08,                    //   REPORT_COUNT (8)
     0x81, 0x02,                    //   INPUT (Data,Var,Abs)
+    
     0x85, 0x02,                    //   REPORT_ID (2)
     0x09, 0x01,                    //   USAGE (Vendor Usage 1)
     0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
@@ -113,6 +115,7 @@ const uint8_t hidDesc[]={
     0x75, 0x01,                    //   REPORT_SIZE (1)
     0x95, 0x08,                    //   REPORT_COUNT (8)
     0x91, 0x02,                    //   OUTPUT (Data,Var,Abs)
+    
     0x85, 0x03,                    //   REPORT_ID (3)
     0x09, 0x01,                    //   USAGE (Vendor Usage 1)
     0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
@@ -120,6 +123,7 @@ const uint8_t hidDesc[]={
     0x75, 0x01,                    //   REPORT_SIZE (1)
     0x95, 0x10,                    //   REPORT_COUNT (16)
     0x81, 0x02,                    //   INPUT (Data,Var,Abs)
+    
     0x85, 0x04,                    //   REPORT_ID (4)
     0x09, 0x01,                    //   USAGE (Vendor Usage 1)
     0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
@@ -127,6 +131,7 @@ const uint8_t hidDesc[]={
     0x75, 0x08,                    //   REPORT_SIZE (8)
     0x95, 0x01,                    //   REPORT_COUNT (1)
     0x91, 0x42,                    //   OUTPUT (Data,Var,Abs,Null)
+    
     0x85, 0x06,                    //   REPORT_ID (6)
     0x09, 0x01,                    //   USAGE (Vendor Usage 1)
     0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
@@ -134,6 +139,7 @@ const uint8_t hidDesc[]={
     0x75, 0x01,                    //   REPORT_SIZE (1)
     0x95, 0x10,                    //   REPORT_COUNT (16)
     0x91, 0x02,                    //   OUTPUT (Data,Var,Abs)
+    
     0x85, 0x07,                    //   REPORT_ID (7)
     0x09, 0x02,                    //   USAGE (Vendor Usage 2)
     0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
@@ -141,12 +147,49 @@ const uint8_t hidDesc[]={
     0x75, 0x08,                    //   REPORT_SIZE (8)
     0x95, 0x01,                    //   REPORT_COUNT (1)
     0x81, 0x02,                    //   INPUT (Data,Var,Abs)
+    
     0x85, 0x08,                    //   REPORT_ID (8)
     0x09, 0x02,                    //   USAGE (Vendor Usage 2)
     0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
     0x25, 0x01,                    //   LOGICAL_MAXIMUM (1)
     0x75, 0x08,                    //   REPORT_SIZE (8)
     0x95, 0x01,                    //   REPORT_COUNT (1)
+    0x91, 0x02,                    //   OUTPUT (Data,Var,Abs)
+    0xc0,                           // END_COLLECTION
+    
+    
+    
+    0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
+    0x09, 0x06,                    // USAGE (Keyboard)
+    0xa1, 0x01,                    // COLLECTION (Application)
+    0x05, 0x07,                    //   USAGE_PAGE (Keyboard)
+    
+    0x85, 0x15,                    //   REPORT_ID (21)
+    0x19, 0xe0,                    //   USAGE_MINIMUM (Keyboard LeftControl)
+    0x29, 0xe7,                    //   USAGE_MAXIMUM (Keyboard Right GUI)
+    0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
+    0x25, 0x01,                    //   LOGICAL_MAXIMUM (1)
+    0x75, 0x01,                    //   REPORT_SIZE (1)
+    0x95, 0x08,                    //   REPORT_COUNT (8)
+    0x81, 0x02,                    //   INPUT (Data,Var,Abs)
+    0x95, 0x01,                    //   REPORT_COUNT (1)
+    0x75, 0x08,                    //   REPORT_SIZE (8)
+    0x81, 0x03,                    //   INPUT (Cnst,Var,Abs)
+    0x95, 0x06,                    //   REPORT_COUNT (6)
+    0x75, 0x08,                    //   REPORT_SIZE (8)
+    0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
+    0x25, 0x65,                    //   LOGICAL_MAXIMUM (101)
+    0x05, 0x07,                    //   USAGE_PAGE (Keyboard)
+    0x19, 0x00,                    //   USAGE_MINIMUM (Reserved (no event indicated))
+    0x29, 0x65,                    //   USAGE_MAXIMUM (Keyboard Application)
+    0x81, 0x00,                    //   INPUT (Data,Ary,Abs)
+    
+    0x85, 0x16,                    //   REPORT_ID (22)
+    0x95, 0x08,                    //   REPORT_COUNT (8)
+    0x75, 0x01,                    //   REPORT_SIZE (1)
+    0x05, 0x08,                    //   USAGE_PAGE (LEDs)
+    0x19, 0x01,                    //   USAGE_MINIMUM (Num Lock)
+    0x29, 0x08,                    //   USAGE_MAXIMUM (Do Not Disturb)
     0x91, 0x02,                    //   OUTPUT (Data,Var,Abs)
     0xc0                           // END_COLLECTION
 };
@@ -184,7 +227,8 @@ const uint8_t STRINGS_4[]= {2+2*11,3,'B',0,'I',0,'G',0,'-',0,'S',0,'T',0,'M',0,'
 usbStt usbIN[4];
 usbStt usbOUT[4];
 EtypeStage0 ep0Stage;
-uint8_t usb_state;
+int16_t LEDSTOBT=-1;
+uint8_t usb_state,SCROLL_LOCK_STATE,dmaCDC;
 uint8_t cdcInput[CDCINPUT_BUFF+4];
 uint8_t uartInput[UARTINPUT_BUFF*2+4];
 uint8_t lineCoding[16];
@@ -545,32 +589,41 @@ void statChangeTimer(void const * argument){
         shUSBtrans(HID_INT_IN,oldDataValue,sizeof(oldDataValue));
     }
 }
-void cdcCallback2(struct usbStt* p){
-    hidReports *report=(hidReports*)p->buff;
+void tTimer(){
     if(timeout==0xFFFFFFFF){
         timeout=0;
         osTimerStart(statChangeHandle,MAGIC_HID_UPDATE);
     }
     timeout=0;
+}
+void cdcCallback2(struct usbStt* p){
+    hidReports *report=(hidReports*)p->buff;
     switch(report->reportId){
-    case 2:
+    case 2:tTimer();
         if(p->sended!=2)break;
         hiddata.mask=report->setChanges;
         break;
-    case 4:
+    case 4:tTimer();
         if(p->sended!=2)break;
         hidSendRep3();
         break;
-    case 6:
+    case 6:tTimer();
         if(p->sended!=3)break;
         if(report->setMask&(1<<0))HAL_GPIO_WritePin(LED_GPIO_Port,      LED_Pin,     (report->setData&(1<<0)) ?GPIO_PIN_SET:GPIO_PIN_RESET);
         if(report->setMask&(1<<6))HAL_GPIO_WritePin(BT_RESET_GPIO_Port, BT_RESET_Pin,(report->setData&(1<<6)) ?GPIO_PIN_SET:GPIO_PIN_RESET);
         if(report->setMask&(1<<7))HAL_GPIO_WritePin(BT_KEY_GPIO_Port,   BT_KEY_Pin,  (report->setData&(1<<7)) ?GPIO_PIN_SET:GPIO_PIN_RESET);
         break;
-    case 8:
+    case 8:tTimer();
         if(p->sended!=2)break;
         HAL_GPIO_WritePin(LED_GPIO_Port,LED_Pin,(report->led)?GPIO_PIN_SET:GPIO_PIN_RESET);
         break;
+    case 22:
+      if(p->sended!=2)break;
+      SCROLL_LOCK_STATE = (report->boot1 & 0x04)?1:0;
+      if(HAL_GPIO_ReadPin(BT_LED2_GPIO_Port,  BT_LED2_Pin)){
+        LEDSTOBT=report->boot1;
+      }
+      break;
     }
     shamkaUSBrecv(HID_INT_OUT,p->buff,MAGIC_HID_BUFF,&cdcCallback2,NONE);
 };
@@ -615,12 +668,18 @@ void shamka_setLineCoding(struct usbStt* p){
     }
 };
 void cdcCallback(struct usbStt* p){
-    HAL_UART_Transmit_DMA(&huart3,p->buff,p->sended);
+  while(HAL_UART_Transmit_DMA(&huart3,p->buff,p->sended)==HAL_BUSY){
+    osDelay(64);
+  }
+  dmaCDC=1;
 };
 
 //USART
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
+  if(dmaCDC==1){
+    dmaCDC=0;
     shamkaUSBrecv(CDC_OUT,cdcInput,64,&cdcCallback,NONE);
+  }
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
     if(uartBuff==0){
@@ -687,6 +746,12 @@ void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
 
 //FREERTOS
 void StartDefaultTask(void const * argument){
+    static uint32_t scrollOn=0;
+    static uint8_t buffSCON[9]={21,0,0,0x47,0,0,0,0,0};
+    static uint8_t buffSCOFF[9]={21,0,0,0,0,0,0,0,0};
+    
+    static char btLedsSend[]="NUM: 0\r\nCAPS: 0\r\nSCROLL: 0\r\n\r\n";
+    
     memset(lineCoding,0,sizeof(lineCoding));
     memset(&hiddata,0,sizeof(hiddata));
 
@@ -698,10 +763,33 @@ void StartDefaultTask(void const * argument){
     HAL_PCD_Start(&hpcd_USB_OTG_FS);
     
     for(;;){
-        osDelay(400);
-        if(timeout==0xFFFFFFFF){
-            HAL_GPIO_TogglePin(LED_GPIO_Port,LED_Pin);
+      osDelay(1000);
+      if(SCROLL_LOCK_STATE){
+        scrollOn++;
+        if(scrollOn>30){
+          osDelay(50);
+          shUSBtrans(HID_INT_IN,buffSCON,sizeof(buffSCON));
+          osDelay(100);
+          shUSBtrans(HID_INT_IN,buffSCOFF,sizeof(buffSCOFF));
+          osDelay(1000);
+          shUSBtrans(HID_INT_IN,buffSCON,sizeof(buffSCON));
+          osDelay(100);
+          shUSBtrans(HID_INT_IN,buffSCOFF,sizeof(buffSCOFF));
+          scrollOn=0;
         }
+      }
+      else{
+        scrollOn=0;
+      }
+      if(LEDSTOBT!=-1){
+        btLedsSend[5]=(LEDSTOBT&1)?0x31:0x30;
+        btLedsSend[14]=(LEDSTOBT&2)?0x31:0x30;
+        btLedsSend[25]=(LEDSTOBT&4)?0x31:0x30;
+        if(HAL_UART_Transmit_DMA(&huart3,(uint8_t*)btLedsSend,sizeof(btLedsSend))!=HAL_BUSY){
+          dmaCDC=0;
+          LEDSTOBT=-1;
+        }
+      }
     }
 }
 
