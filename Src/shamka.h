@@ -16,14 +16,15 @@
 
 #define CDC_IN 0x82
 #define CDC_OUT 0x02
-#define CDC_INT 0x83
-#define CDC_IF1 1
-#define CDC_IF2 2
+#define CDC_IF 1
 
 #define HID_INT_IN 0x81
 #define HID_INT_OUT 0x01
 #define HID_IF 0
 
+#define MSD_OUT 0x03
+#define MSD_IN 0x83
+#define MSD_IF 3
 
 //TYPEDEFS
 struct usbStt;

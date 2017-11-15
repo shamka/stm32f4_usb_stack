@@ -13,6 +13,8 @@
 #define MAGIC_HID_UPDATE 32*4
 #define MAGIC_HID_TIMEOUT (uint32_t)(30*(1000/(MAGIC_HID_UPDATE)))
 
+#define MAGIC_MSD_BUFF 64
+
 
 //TYPEDEFS
 typedef enum{
@@ -95,6 +97,28 @@ typedef struct{
 
 
 //CONSTS
+const uint8_t PropReq[]={
+	0x42,0x00,          //2
+	0x00,0x01,          //4
+	0x01,0x00,0x00,0x00,//8
+	0x00,0x00,0x00,0x00,//12
+	0x00,0x02,0x00,0x00,//16
+	0x00,0x02,0x00,0x00,//20
+	0x00,0x18,0x15,0x00,//24
+	0x01,0x00,0x00,0x00,//28
+	0x3F,0x01,0x00,0x00,//32
+	0x7F,0x00,0x00,0x00,//36
+	0xF0,0xFF,0x07,0x10,//40
+	0x08,0x00,          //42
+	0x07,0x1F,          //44
+	0x00,0x02,0x00,0x00,//48
+	0x00,0x02,0x00,0x00,//52
+	0x00,0x00,0x00,0x00,//56
+	0x00,0x00,0x00,0x00,//60
+	'3',0x00,
+        '.',0x00,
+        '2',0x00,
+};
 const uint8_t hidDesc[]={
     0x06, 0x00, 0xff,              // USAGE_PAGE (Generic Desktop)
     0x09, 0x01,                    // USAGE (Vendor Usage 1)
@@ -194,7 +218,7 @@ const uint8_t hidDesc[]={
     0xc0                           // END_COLLECTION
 };
 const uint8_t conf1Desc[]={
-    9,2,(9+8+ 9+5+4+5+5+7 + 9+7+7 + 9+(9)+7+7),0,(3),1,0,0x80,100, //CONFIG
+    9,2,(9 + 9+9+7+7 + 9+7+7 + 9+7+7),0,(3),1,0,0x80,100, //CONFIG
 
     9,4,HID_IF,0,2,0x03,0,0,3, //INTRFACE HID_IF
     9,0x21,0x11,0x01,0x00,0x01,0x22,sizeof(hidDesc)&255,sizeof(hidDesc)>>8,
@@ -202,28 +226,30 @@ const uint8_t conf1Desc[]={
     7,5,HID_INT_IN,3,64,0,32,
     7,5,HID_INT_OUT,3,64,0,32,
 
-
-    8,11,CDC_IF1,2,2,2,0,2,        //IAD
-    9,4,CDC_IF1,0,1,2,2,1,0,     //INTERFACE CDC_IF1
-    5,0x24,0,0x10,0x01,
-    4,0x24,2,2,
-    5,0x24,6,0,1,
-    5,0x24,1,3,1,
-    7,5,CDC_INT,3,64,0,0xFF,
-    
-    9,4,CDC_IF2,0,2,0x0A,0,0,0, //INTRFACE CDC_IF2
+    9,4,CDC_IF,0,2,0xFF,0,0,2, //INTRFACE CDC_IF2
     7,5,CDC_OUT,2,64,0,0,
     7,5,CDC_IN,2,64,0,0,
+    
+    9,4,MSD_IF,0,2,0x08,0x06,0x50,5, //INTRFACE MSD_IF3
+    7,5,MSD_OUT,2,64,0,0,
+    7,5,MSD_IN,2,64,0,0,
+    
+    
     
 };
 const usbDescriptor6 devDesc={18,1,0x200,0xEF,0x02,0x01,64,0x0483,0x5741,0x200,0,4,1,1};
 const uint8_t STRINGS_0[]={4,3,9,4};
-const uint8_t STRINGS_1[]= {2+2 *8,3,'0',0,'0',0,'0',0,'0',0,'0',0,'0',0,'0',0,'!',0};
-const uint8_t STRINGS_2[]= {2+2*11,3,'V',0,'C',0,'P',0,'-',0,'S',0,'T',0,'M',0,'3',0,'2',0,'F',0,'4',0};
+const uint8_t STRINGS_1[]= {2+2 *8,3,'0',0,'0',0,'0',0,'0',0,'0',0,'0',0,'0',0,'@',0};
+const uint8_t STRINGS_2[]= {2+2*11,3,'C',0,'D',0,'C',0,'-',0,'S',0,'T',0,'M',0,'3',0,'2',0,'F',0,'4',0};
 const uint8_t STRINGS_3[]= {2+2*11,3,'H',0,'I',0,'D',0,'-',0,'S',0,'T',0,'M',0,'3',0,'2',0,'F',0,'4',0};
 const uint8_t STRINGS_4[]= {2+2*11,3,'B',0,'I',0,'G',0,'-',0,'S',0,'T',0,'M',0,'3',0,'2',0,'F',0,'4',0};
+const uint8_t STRINGS_5[]= {2+2*11,3,'M',0,'S',0,'D',0,'-',0,'S',0,'T',0,'M',0,'3',0,'2',0,'F',0,'4',0};
 
 //VARS
+const uint8_t cdcCpErStat[0x13];
+uint8_t cdcCpFlow[0x10];
+uint8_t cdcCpChars[6];
+uint8_t cdcCpBaudRate[4];
 usbStt usbIN[4];
 usbStt usbOUT[4];
 EtypeStage0 ep0Stage;
@@ -247,9 +273,10 @@ uint32_t timeout;
 
 //FUNCTIONS 
 void shamka_setLineCoding(struct usbStt* p);
+void cdc_cp_nullF(struct usbStt* p);
+void hidCallback(struct usbStt* p);
 void cdcCallback(struct usbStt* p);
-void cdcCallback2(struct usbStt* p);
-
+void msdCallback(struct usbStt* p);
 
 //USB STACK
 void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd){
@@ -262,22 +289,16 @@ void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd){
     
     HAL_PCD_EP_Close(hpcd,0x80);
     HAL_PCD_EP_Close(hpcd,0x00);
-    HAL_PCD_EP_Close(hpcd,CDC_OUT);
-    HAL_PCD_EP_Close(hpcd,CDC_IN);
-    HAL_PCD_EP_Close(hpcd,CDC_INT);
-    HAL_PCD_EP_Close(hpcd,HID_INT_OUT);
-    HAL_PCD_EP_Close(hpcd,HID_INT_IN);
+    HAL_PCD_EP_Close(hpcd,0x81);
+    HAL_PCD_EP_Close(hpcd,0x01);
+    HAL_PCD_EP_Close(hpcd,0x82);
+    HAL_PCD_EP_Close(hpcd,0x02);
+    HAL_PCD_EP_Close(hpcd,0x83);
+    HAL_PCD_EP_Close(hpcd,0x03);
     
     HAL_PCD_EP_Open(hpcd,0x00,64,0);
     HAL_PCD_EP_Open(hpcd,0x80,64,0);
     
-    HAL_PCD_EP_Open(hpcd,CDC_OUT,64,2);
-    HAL_PCD_EP_Open(hpcd,CDC_IN,64,2);
-    HAL_PCD_EP_Open(hpcd,CDC_INT,64,3);
-    
-    HAL_PCD_EP_Open(hpcd,HID_INT_OUT,64,3);
-    HAL_PCD_EP_Open(hpcd,HID_INT_IN,64,3);
-    firstCDC=1;
     
 };
 void HAL_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd){
@@ -285,6 +306,7 @@ void HAL_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd){
 #ifdef _DEBUG_USB_STACK
     printf("SUSPEND\r\n");
 #endif
+    //printf("suspend STOP\r\n");
     osTimerStop(statChangeHandle);
     usb_state&=~1;
     __HAL_PCD_GATE_PHYCLOCK(hpcd);
@@ -294,6 +316,7 @@ void HAL_PCD_ResumeCallback(PCD_HandleTypeDef *hpcd){
     printf("RESUME\r\n");
 #endif
     firstCDC=1;
+    //printf("Resume START\r\n");
     osTimerStart(statChangeHandle,MAGIC_HID_UPDATE);
     usb_state|=1;
 }
@@ -310,6 +333,9 @@ void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd){
 void shamkaUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(struct usbStt*),EtypeCallback type){
     epnum&=0x7f;
 #ifdef _DEBUG_USB_STACK
+#ifndef _DEBUG_USB0
+        if(epnum!=0)
+#endif
     if(len==0)
         printf("Ptrans%d: ZLP\r\n",epnum);
     else
@@ -334,6 +360,9 @@ void shUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len){
 void shamkaUSBrecv(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(struct usbStt*),EtypeCallback type){
     epnum&=0x7f;
 #ifdef _DEBUG_USB_STACK
+#ifndef _DEBUG_USB0
+        if(epnum!=0)
+#endif
     if(len==0){
         printf("Precv%d: ZLP\r\n",epnum);
     }else{
@@ -357,6 +386,9 @@ void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
     epS->sended+=ep.xfer_count;
     
 #ifdef _DEBUG_USB_STACK
+#ifndef _DEBUG_USB0
+        if(epnum!=0)
+#endif
     if(ep.xfer_count==0)
         printf("Recv%d: ZLP\r\n",epnum);
     else
@@ -365,6 +397,9 @@ void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
     
     if(epS->left>0 && !last){
 #ifdef _DEBUG_USB_STACK
+#ifndef _DEBUG_USB0
+        if(epnum!=0)
+#endif
         printf("Precv%d: %d\r\n",epnum,epS->left);
 #endif
         HAL_PCD_EP_Receive(hpcd,epnum,ep.xfer_buff,epS->left);
@@ -372,6 +407,9 @@ void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
     else{
         if(epS->type==ZLP || (last && epS->type==ZLPF)){
 #ifdef _DEBUG_USB_STACK
+#ifndef _DEBUG_USB0
+        if(epnum!=0)
+#endif
             printf("Precv%d: ZLP\r\n",epnum);
 #endif
             epS->type=NONE;
@@ -397,15 +435,23 @@ void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
     usbStt *epS=&usbIN[epnum];
     
 #ifdef _DEBUG_USB_STACK
-    if(ep.xfer_count==0)
+#ifndef _DEBUG_USB0
+        if(epnum!=0)
+#endif
+    if(ep.xfer_count==0){
         printf("Trans%d: ZLP\r\n",epnum);
-    else
+    }
+    else{
         printf("Trans%d: %d\r\n",epnum,ep.xfer_count);
+    }
 #endif
     epS->left-=ep.xfer_count;
     
     if(epS->left>0){
 #ifdef _DEBUG_USB_STACK
+#ifndef _DEBUG_USB0
+        if(epnum!=0)
+#endif
         printf("Ptrans%d: %d\r\n",epnum,epS->left);
 #endif
         HAL_PCD_EP_Transmit(hpcd,epnum,ep.xfer_buff,epS->left);
@@ -413,7 +459,10 @@ void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
     else{
         if(epS->type==ZLP || (epS->type==ZLPF && ep.xfer_count==ep.maxpacket)){
 #ifdef _DEBUG_USB_STACK
-            printf("Ptrans%d: ZLP\r\n",epnum);
+#ifndef _DEBUG_USB0
+        if(epnum!=0)
+#endif
+          printf("Ptrans%d: ZLP\r\n",epnum);
 #endif
             epS->type=NONE;
             HAL_PCD_EP_Transmit(hpcd,epnum,0,0);
@@ -436,31 +485,19 @@ void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
 };
 
 //SETUP USB STAGE WITH INLINES
-inline static void shamkaUSbHIDSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
+inline static void shamkaUSbMSDSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
     switch(setup->bRequest){
-    case 0x0A://SET IDLE
-        osTimerStart(statChangeHandle,32*4);
-        shamkaUSBtrans(0,0,0,0,NONE);
+    case 0xFE://GET MAX LUN
+        shamkaUSBtrans(0,(uint8_t*)&STRINGS_1[3],1,0,NONE);
         break;
     }
 }
-inline static void shamkaUSbCDCSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
+inline static void shamkaUSbHIDSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
     switch(setup->bRequest){
-    case 0x20://SET LINE CODING
-        shamkaUSBrecv(0,&lineCoding[8],MIN(7,setup->wLength),&shamka_setLineCoding,NONE);
-        break;
-    case 0x21://GET LINE CODING
-        shamkaUSBtrans(0,lineCoding,MIN(7,setup->wLength),0,NONE);
-        break;
-    case 0x22://SET CONTROL LINE STATE
-        lineCoding[7]=(uint8_t)setup->wValue;
-        //HAL_GPIO_WritePin(BT_KEY_GPIO_Port,BT_KEY_Pin,lineCoding[7]&1?GPIO_PIN_SET:GPIO_PIN_RESET);
-        //HAL_GPIO_WritePin(LED_GPIO_Port,LED_Pin,lineCoding[7]&1?GPIO_PIN_SET:GPIO_PIN_RESET);
+    case 0x0A://SET IDLE
+        //printf("hidSetup START\r\n");
+        osTimerStart(statChangeHandle,32*4);
         shamkaUSBtrans(0,0,0,0,NONE);
-        if(firstCDC){
-          shamkaUSBrecv(CDC_OUT,cdcInput,64,&cdcCallback,NONE);
-          firstCDC=0;
-        };
         break;
     }
 }
@@ -468,6 +505,11 @@ inline static void usbSStandart(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_
     uint8_t* desc;
     uint16_t len;
     switch(setup->bRequest){
+    case 0://GET_STATUS
+        shamkaUSBtrans(0,(uint8_t*)&STRINGS_1[3],1,0,NONE);
+        
+        //shamkaUSBtrans(HID_INT_IN,&lineCoding[15],1,0,NONE);
+        return;
     case 1://CLEAR FEATURE
         shamkaUSBtrans(0,0,0,0,NONE);
         
@@ -489,6 +531,7 @@ inline static void usbSStandart(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_
             case 2:desc=(uint8_t*)STRINGS_2;len=sizeof(STRINGS_2);break;
             case 3:desc=(uint8_t*)STRINGS_3;len=sizeof(STRINGS_3);break;
             case 4:desc=(uint8_t*)STRINGS_4;len=sizeof(STRINGS_4);break;
+            case 5:desc=(uint8_t*)STRINGS_5;len=sizeof(STRINGS_5);break;
             default:goto usbStall_01;
             };break;
         case 0x22:desc=(uint8_t*)&hidDesc;len=sizeof(hidDesc);break;
@@ -498,7 +541,19 @@ inline static void usbSStandart(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_
         return;
     case 9://SET_CONF
         
-        shamkaUSBrecv(HID_INT_OUT,hidInput,MAGIC_HID_BUFF,&cdcCallback2,NONE);
+        HAL_PCD_EP_Open(hpcd,CDC_OUT,64,2);
+        HAL_PCD_EP_Open(hpcd,CDC_IN,64,2);
+        //HAL_PCD_EP_Open(hpcd,CDC_INT,64,3);
+        
+        HAL_PCD_EP_Open(hpcd,MSD_OUT,64,2);
+        HAL_PCD_EP_Open(hpcd,MSD_IN,64,2);
+        
+        HAL_PCD_EP_Open(hpcd,HID_INT_OUT,64,3);
+        HAL_PCD_EP_Open(hpcd,HID_INT_IN,64,3);
+        firstCDC=1;
+
+        shamkaUSBrecv(HID_INT_OUT,hidInput,MAGIC_HID_BUFF,&hidCallback,NONE);
+        shamkaUSBrecv(MSD_OUT,hidInput,MAGIC_MSD_BUFF,&msdCallback,NONE);
         shamkaUSBtrans(0,0,0,0,NONE);
         return;
     }
@@ -512,22 +567,69 @@ inline static void usbSClass(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t I
     switch(setup->bmRequestType&0x1f){
     case 1://INTERFACE
         switch(setup->wIndex){
-        case CDC_IF1:
-        case CDC_IF2:
-            shamkaUSbCDCSetup(hpcd,setup,IN);
+        case MSD_IF:
+            shamkaUSbMSDSetup(hpcd,setup,IN);
             break;
         case HID_IF:
             shamkaUSbHIDSetup(hpcd,setup,IN);
+            break;
+        case CDC_IF:
             break;
         }
         break;
     }
 }
 inline static void usbSVendor(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
-    
+    switch(setup->bRequest){
+    case 0xFF:
+      switch(setup->wValue){
+      case 0x370B:
+        shamkaUSBtrans(0,(uint8_t*)&conf1Desc[1],1,0,NONE);
+        break;
+      }
+      break;
+    case 0x0F://GET_PROPS
+      shamkaUSBtrans(0,(uint8_t*)PropReq,MIN(setup->wLength,sizeof(PropReq)),0,NONE);
+      break;
+    case 0x03://SET_LINE_CTL
+      lineCoding[12]=0;
+      lineCoding[13]=0;
+      lineCoding[14]=setup->wValue>>8;
+      shamkaUSBtrans(0,0,0,0,NONE);
+      break;
+    case 0x13://SET_FLOW
+      shamkaUSBrecv(0,cdcCpFlow,MIN(setup->wLength,sizeof(cdcCpFlow)),&cdc_cp_nullF,NONE);
+      break;
+    case 0x19://SET_CHARS
+      shamkaUSBrecv(0,cdcCpChars,MIN(setup->wLength,sizeof(cdcCpChars)),&cdc_cp_nullF,NONE);
+      break;
+    case 0x1E://SET_BAUDRATE
+      if(firstCDC){
+          shamkaUSBrecv(CDC_OUT,cdcInput,64,&cdcCallback,NONE);
+          firstCDC=0;
+      };
+      shamkaUSBrecv(0,&lineCoding[8],MIN(setup->wLength,4),&shamka_setLineCoding,NONE);
+      break;
+    case 0x00://IFC_ENABLE
+      shamkaUSBtrans(0,0,0,0,NONE);
+      break;
+    case 0x08://GET_MDMSTS
+      shamkaUSBtrans(0,(uint8_t*)&STRINGS_1[3],1,0,NONE);
+      break;
+    case 0x10://GET_COMM_STATUS
+      shamkaUSBtrans(0,(uint8_t*)cdcCpErStat,MIN(setup->wLength,sizeof(cdcCpErStat)),&shamka_setLineCoding,NONE);
+      break;
+    case 0x07://SET_MHS
+      lineCoding[7]=(setup->wValue&3)|((setup->wValue>>4)&0x30);
+      shamkaUSBtrans(0,0,0,0,NONE);
+      break;
+    case 0x12://PURGE   <<----------------------------------------------------
+      shamkaUSBtrans(0,0,0,0,NONE);
+      break;
+    }
 }
 void HAL_PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd){
-#ifdef _DEBUG_USB_STACK
+#ifdef _DEBUG_USB0
     printf("\r\nbm/R: %02X %02X\r\nVIL:%04X %04X %04X\r\n\r\n",
            ((usbSetup*)hpcd->Setup)->bmRequestType, 
            ((usbSetup*)hpcd->Setup)->bRequest,
@@ -572,6 +674,7 @@ void statChangeTimer(void const * argument){
     timeout++;
     if(timeout>MAGIC_HID_TIMEOUT){
         timeout=0xFFFFFFFF;
+        //printf("statChangeTimer STOP\r\n");
         osTimerStop(statChangeHandle);
         hidSendRep3();
         return;
@@ -592,11 +695,12 @@ void statChangeTimer(void const * argument){
 void tTimer(){
     if(timeout==0xFFFFFFFF){
         timeout=0;
+        //printf("tTimer START\r\n");
         osTimerStart(statChangeHandle,MAGIC_HID_UPDATE);
     }
     timeout=0;
 }
-void cdcCallback2(struct usbStt* p){
+void hidCallback(struct usbStt* p){
     hidReports *report=(hidReports*)p->buff;
     switch(report->reportId){
     case 2:tTimer();
@@ -625,7 +729,7 @@ void cdcCallback2(struct usbStt* p){
       }
       break;
     }
-    shamkaUSBrecv(HID_INT_OUT,p->buff,MAGIC_HID_BUFF,&cdcCallback2,NONE);
+    shamkaUSBrecv(HID_INT_OUT,p->buff,MAGIC_HID_BUFF,&hidCallback,NONE);
 };
 
 
@@ -666,12 +770,24 @@ void shamka_setLineCoding(struct usbStt* p){
 #endif
         HAL_UART_Receive_DMA(&huart3, &uartInput[uartBuff], 64);
     }
+    else if(p->sended==4){
+        HAL_UART_Abort(&huart3);
+        uartBuff=0;
+        shamka_setSpeed();
+#ifdef _DEBUG_USB_UART
+        printf("UART3 start DMA\r\n");
+#endif
+        HAL_UART_Receive_DMA(&huart3, &uartInput[uartBuff], 64);
+    }
 };
 void cdcCallback(struct usbStt* p){
   while(HAL_UART_Transmit_DMA(&huart3,p->buff,p->sended)==HAL_BUSY){
     osDelay(64);
   }
   dmaCDC=1;
+};
+void cdc_cp_nullF(struct usbStt* p){
+  
 };
 
 //USART
@@ -684,13 +800,13 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
     if(uartBuff==0){
         HAL_UART_Receive_DMA(&huart3, &uartInput[MAGIC_UARTRX_BUFF], MAGIC_UARTRX_BUFF);
-        shUSBtrans(CDC_IN,&uartInput[0],MAGIC_UARTRX_BUFF);
+        if(lineCoding[7]&0x11)shUSBtrans(CDC_IN,&uartInput[0],MAGIC_UARTRX_BUFF);
         uartBuff=MAGIC_UARTRX_BUFF;
     }
     else{
         HAL_UART_Receive_DMA(&huart3, &uartInput[0], MAGIC_UARTRX_BUFF);
         //shamkaUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],MAGIC_UARTRX_BUFF,0,NONE);
-        shUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],MAGIC_UARTRX_BUFF);
+        if(lineCoding[7]&0x11)shUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],MAGIC_UARTRX_BUFF);
         uartBuff=0;
     }
 #ifdef _DEBUG_USB_UART
@@ -700,11 +816,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 }
 void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
     static uint16_t rxXferCount = 0;
+    if(huart->RxXferSize==0)return;
     if(huart->hdmarx != NULL)
     {
         rxXferCount = huart->RxXferSize - __HAL_DMA_GET_COUNTER(huart->hdmarx);
         if(rxXferCount==0){
-            shUSBtrans(CDC_IN,0,0);
+            if(lineCoding[7]&0x11)shUSBtrans(CDC_IN,0,0);
 #ifdef _DEBUG_USB_UART
             printf("UART3 IDLE 64\r\n");
 #endif
@@ -727,13 +844,13 @@ void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
         if(uartBuff==0){
             HAL_UART_Receive_DMA(&huart3, &uartInput[MAGIC_UARTRX_BUFF], MAGIC_UARTRX_BUFF);
             //shamkaUSBtrans(CDC_IN,&uartInput[0],rxXferCount,0,NONE);
-            shUSBtrans(CDC_IN,&uartInput[0],rxXferCount);
+            if(lineCoding[7]&0x11)shUSBtrans(CDC_IN,&uartInput[0],rxXferCount);
             uartBuff=MAGIC_UARTRX_BUFF;
         }
         else{
             HAL_UART_Receive_DMA(&huart3, &uartInput[0], MAGIC_UARTRX_BUFF);
             //shamkaUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],rxXferCount,0,NONE);
-            shUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],rxXferCount);
+            if(lineCoding[7]&0x11)shUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],rxXferCount);
             uartBuff=0;
         }
 #ifdef _DEBUG_USB_UART
@@ -743,6 +860,11 @@ void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
     }
 }
 
+//MSD
+void msdCallback(struct usbStt* p){
+    
+    shamkaUSBrecv(MSD_OUT,p->buff,MAGIC_MSD_BUFF,&msdCallback,NONE);
+};
 
 //FREERTOS
 void StartDefaultTask(void const * argument){
@@ -796,14 +918,22 @@ void StartDefaultTask(void const * argument){
 
 usbTransStruct *foFree;
 void memFreeAfterSend(struct usbStt* p){
+  if(foFree!=NULL){
     free(foFree);
-    osSemaphoreRelease(goToSendUSBHandle);
+    foFree=NULL;
+  }
+  osSemaphoreRelease(goToSendUSBHandle);
 }
-void usbTransmit(void const * argument)
-{
+void usbTransmit(void const * argument){
   for(;;)
   {
-    osSemaphoreWait(goToSendUSBHandle,osWaitForever);
+    if((osSemaphoreWait(goToSendUSBHandle,5000)==0) && (foFree!=NULL)){
+      free(foFree);
+#ifdef _DEBUG_USB_CDC
+      printf("SORRY CDC IN TIMEOUT");
+#endif
+      foFree=NULL;
+    };
     osEvent q = osMessageGet(usbTransmitQueueHandle,osWaitForever);
     foFree = (usbTransStruct*)q.value.p;
     shamkaUSBtrans(foFree->epnum,foFree->buff,foFree->len,&memFreeAfterSend,NONE);
