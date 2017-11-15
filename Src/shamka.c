@@ -277,6 +277,7 @@ void cdc_cp_nullF(struct usbStt* p);
 void hidCallback(struct usbStt* p);
 void cdcCallback(struct usbStt* p);
 void msdCallback(struct usbStt* p);
+void shamka_setSpeed();
 
 //USB STACK
 void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd){
@@ -611,6 +612,11 @@ inline static void usbSVendor(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t 
       shamkaUSBrecv(0,&lineCoding[8],MIN(setup->wLength,4),&shamka_setLineCoding,NONE);
       break;
     case 0x00://IFC_ENABLE
+      lineCoding[7]=setup->wValue&1;
+      if(setup->wValue==0){
+        *(uint32_t*)&lineCoding[8]=1382400;
+        shamka_setSpeed();
+      }
       shamkaUSBtrans(0,0,0,0,NONE);
       break;
     case 0x08://GET_MDMSTS
@@ -862,8 +868,7 @@ void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
 
 //MSD
 void msdCallback(struct usbStt* p){
-    
-    shamkaUSBrecv(MSD_OUT,p->buff,MAGIC_MSD_BUFF,&msdCallback,NONE);
+  shamkaUSBrecv(MSD_OUT,p->buff,MAGIC_MSD_BUFF,&msdCallback,NONE);
 };
 
 //FREERTOS
