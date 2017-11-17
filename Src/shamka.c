@@ -13,8 +13,91 @@
 #define MAGIC_HID_UPDATE 32*4
 #define MAGIC_HID_TIMEOUT (uint32_t)(30*(1000/(MAGIC_HID_UPDATE)))
 
-#define MAGIC_MSD_BUFF 64
+#define MAGIC_MSD_BUFF 4096
 
+
+/* SCSI Commands */
+#define SCSI_FORMAT_UNIT                            0x04
+#define SCSI_INQUIRY                                0x12
+#define SCSI_MODE_SELECT6                           0x15
+#define SCSI_MODE_SELECT10                          0x55
+#define SCSI_MODE_SENSE6                            0x1A
+#define SCSI_MODE_SENSE10                           0x5A
+#define SCSI_ALLOW_MEDIUM_REMOVAL                   0x1E
+#define SCSI_READ6                                  0x08
+#define SCSI_READ10                                 0x28
+#define SCSI_READ12                                 0xA8
+#define SCSI_READ16                                 0x88
+
+#define SCSI_READ_CAPACITY10                        0x25
+#define SCSI_READ_CAPACITY16                        0x9E
+
+#define SCSI_REQUEST_SENSE                          0x03
+#define SCSI_START_STOP_UNIT                        0x1B
+#define SCSI_TEST_UNIT_READY                        0x00
+#define SCSI_WRITE6                                 0x0A
+#define SCSI_WRITE10                                0x2A
+#define SCSI_WRITE12                                0xAA
+#define SCSI_WRITE16                                0x8A
+
+#define SCSI_VERIFY10                               0x2F
+#define SCSI_VERIFY12                               0xAF
+#define SCSI_VERIFY16                               0x8F
+
+#define SCSI_SEND_DIAGNOSTIC                        0x1D
+#define SCSI_READ_FORMAT_CAPACITIES                 0x23
+/* SCSI ER1 */
+#define NO_SENSE                                    0
+#define RECOVERED_ERROR                             1
+#define NOT_READY                                   2
+#define MEDIUM_ERROR                                3
+#define HARDWARE_ERROR                              4
+#define ILLEGAL_REQUEST                             5
+#define UNIT_ATTENTION                              6
+#define DATA_PROTECT                                7
+#define BLANK_CHECK                                 8
+#define VENDOR_SPECIFIC                             9
+#define COPY_ABORTED                                10
+#define ABORTED_COMMAND                             11
+#define VOLUME_OVERFLOW                             13
+#define MISCOMPARE                                  14
+
+/* SCSI ER2 */
+#define INVALID_CDB                                 0x20
+#define INVALID_FIELED_IN_COMMAND                   0x24
+#define PARAMETER_LIST_LENGTH_ERROR                 0x1A
+#define INVALID_FIELD_IN_PARAMETER_LIST             0x26
+#define ADDRESS_OUT_OF_RANGE                        0x21
+#define MEDIUM_NOT_PRESENT                          0x3A
+#define MEDIUM_HAVE_CHANGED                         0x28
+#define WRITE_PROTECTED                             0x27 
+#define UNRECOVERED_READ_ERROR			    0x11
+#define WRITE_FAULT				    0x03 
+
+#define READ_FORMAT_CAPACITY_DATA_LEN               0x0C
+#define READ_CAPACITY10_DATA_LEN                    0x08
+#define MODE_SENSE10_DATA_LEN                       0x08
+#define MODE_SENSE6_DATA_LEN                        0x04
+#define REQUEST_SENSE_DATA_LEN                      0x12
+#define STANDARD_INQUIRY_DATA_LEN                   0x24
+#define BLKVFY                                      0x04
+
+#define USBD_BOT_CBW_SIGNATURE             0x43425355
+#define USBD_BOT_CSW_SIGNATURE             0x53425355
+#define USBD_BOT_CBW_LENGTH                31
+#define USBD_BOT_CSW_LENGTH                13
+
+#define SENSE_LIST_DEEPTH                  4
+
+#define msd_LUN0_CAP ((128<<(20-9))-1)
+
+#define USBD_BOT_PREIDLE                   0
+#define USBD_BOT_IDLE                      1
+#define USBD_BOT_STALL_INB                 2
+#define USBD_BOT_STALL_INB2                3
+#define USBD_BOT_LAST_DATA_IN              4
+#define USBD_BOT_ER                        5
+#define USBD_BOT_DATA_IN                   6
 
 //TYPEDEFS
 typedef enum{
@@ -58,8 +141,9 @@ typedef struct usbStt{
     int32_t sended;
     int32_t left;
     Tcallback cb;
-    uint8_t *buff;
+    Tcallback cbAfterStallClear;
     EtypeCallback type;
+    uint8_t *buff;
     uint8_t enp;
 } usbStt;
 
@@ -93,6 +177,41 @@ typedef struct{
     uint8_t mask;
     uint8_t data;
 } hidData;
+
+typedef struct{
+  uint32_t dSignature;
+  uint32_t dTag;
+  uint32_t dDataLength;
+  uint8_t  bmFlags;
+  uint8_t  bLUN;
+  uint8_t  bCBLength;
+  uint8_t  CB[16];
+  uint8_t  ReservedForAlign;
+}
+USBD_MSC_BOT_CBWTypeDef;
+
+
+typedef struct{
+  uint32_t dSignature;
+  uint32_t dTag;
+  uint32_t dDataResidue;
+  uint8_t  bStatus;
+  uint8_t  ReservedForAlign[3];  
+}
+USBD_MSC_BOT_CSWTypeDef;
+
+typedef struct _SENSE_ITEM {                
+  char Skey;
+  union {
+    struct _ASCs {
+      char ASC;
+      char ASCQ;
+    }b;
+    unsigned int	ASC;
+    char *pData;
+  } w;
+}
+USBD_SCSI_SenseTypeDef; 
 #pragma pack(pop)
 
 
@@ -244,6 +363,30 @@ const uint8_t STRINGS_2[]= {2+2*11,3,'C',0,'D',0,'C',0,'-',0,'S',0,'T',0,'M',0,'
 const uint8_t STRINGS_3[]= {2+2*11,3,'H',0,'I',0,'D',0,'-',0,'S',0,'T',0,'M',0,'3',0,'2',0,'F',0,'4',0};
 const uint8_t STRINGS_4[]= {2+2*11,3,'B',0,'I',0,'G',0,'-',0,'S',0,'T',0,'M',0,'3',0,'2',0,'F',0,'4',0};
 const uint8_t STRINGS_5[]= {2+2*11,3,'M',0,'S',0,'D',0,'-',0,'S',0,'T',0,'M',0,'3',0,'2',0,'F',0,'4',0};
+const uint8_t msd_LUN0_INQUIRY[36]={
+  /* LUN 0 */
+  0x00,		
+  0x80,		
+  0x02,		
+  0x02,
+  (36 - 5),
+  0x00,
+  0x00,	
+  0x00,
+  'S', 'T', 'M', '3', '2', '-', 'F', '4', /* Manufacturer : 8 bytes */
+  'M', 'S', 'D', ' ', 'L', 'U', 'N', '0', /* Product      : 16 Bytes */
+  ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+  '0', '.', '0' ,'1',                     /* Version      : 4 Bytes */
+};
+const uint8_t msd_Page00_Inquiry_Data[7] = {//7						
+	0x00,		
+	0x00, 
+	0x00, 
+	(7 - 4),
+	0x00, 
+	0x80, 
+	0x83 
+};  
 
 //VARS
 const uint8_t cdcCpErStat[0x13];
@@ -266,18 +409,27 @@ extern osThreadId usbTransHandle;
 extern osMessageQId usbTransmitQueueHandle;
 extern osSemaphoreId goToSendUSBHandle;
 
-
 uint8_t hidInput[MAGIC_HID_BUFF+4];
 hidData hiddata;
 uint32_t timeout;
 
+
+uint8_t msdInput[MAGIC_MSD_BUFF];
+uint8_t msdOutput[MAGIC_MSD_BUFF];
+USBD_MSC_BOT_CBWTypeDef msdCbw;
+USBD_MSC_BOT_CSWTypeDef msdCsw;
+USBD_SCSI_SenseTypeDef   scsi_sense;// [SENSE_LIST_DEEPTH];
+uint8_t msd_lun_ready[1]={1};
+uint8_t msdState;
+
+
 //FUNCTIONS 
-void shamka_setLineCoding(struct usbStt* p);
-void cdc_cp_nullF(struct usbStt* p);
-void hidCallback(struct usbStt* p);
-void cdcCallback(struct usbStt* p);
-void msdCallback(struct usbStt* p);
-void shamka_setSpeed();
+uint8_t shamka_setLineCoding(struct usbStt* p);
+uint8_t cdc_cp_nullF(struct usbStt* p);
+uint8_t hidCallback(struct usbStt* p);
+uint8_t cdcCallback(struct usbStt* p);
+uint8_t msdCallback(struct usbStt* p);
+uint8_t shamka_setSpeed();
 
 //USB STACK
 void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd){
@@ -331,7 +483,7 @@ void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd){
     printf("DISCONNECT\r\n");
 #endif
 }
-void shamkaUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(struct usbStt*),EtypeCallback type){
+void shamkaUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len,uint8_t(*callback)(struct usbStt*),EtypeCallback type){
     epnum&=0x7f;
 #ifdef _DEBUG_USB_STACK
 #ifndef _DEBUG_USB0
@@ -358,7 +510,7 @@ void shUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len){
     tr->epnum=epnum;
     osMessagePut(usbTransmitQueueHandle,(uint32_t)tr,osWaitForever);
 };
-void shamkaUSBrecv(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(struct usbStt*),EtypeCallback type){
+void shamkaUSBrecv(uint8_t epnum,uint8_t* buff,uint32_t len,uint8_t(*callback)(struct usbStt*),EtypeCallback type){
     epnum&=0x7f;
 #ifdef _DEBUG_USB_STACK
 #ifndef _DEBUG_USB0
@@ -403,17 +555,19 @@ void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
 #endif
         printf("Precv%d: %d\r\n",epnum,epS->left);
 #endif
+      epS->type|=0x20;
+      if((epS->cb==0) || ((epS->type&0x10) == 0) || !epS->cb(epS))
         HAL_PCD_EP_Receive(hpcd,epnum,ep.xfer_buff,epS->left);
     }
     else{
-        if(epS->type==ZLP || (last && epS->type==ZLPF)){
+        if(epS->type&0x0f==ZLP || (last && epS->type&0x0f==ZLPF)){
 #ifdef _DEBUG_USB_STACK
 #ifndef _DEBUG_USB0
         if(epnum!=0)
 #endif
             printf("Precv%d: ZLP\r\n",epnum);
 #endif
-            epS->type=NONE;
+            epS->type=(EtypeCallback)((uint8_t)(epS->type&0x10)|(uint8_t)NONE);
             HAL_PCD_EP_Receive(hpcd,epnum,0,0);
         }
         else{
@@ -425,6 +579,7 @@ void HAL_PCD_DataOutStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
                 }
             }
             if(epS->cb!=0){
+                epS->type&=0x1F;
                 epS->cb(epS);
             }
         }
@@ -455,17 +610,19 @@ void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
 #endif
         printf("Ptrans%d: %d\r\n",epnum,epS->left);
 #endif
+      epS->type|=0x20;
+      if((epS->cb==0) || (epS->type&0x10 == 0) || !epS->cb(epS))
         HAL_PCD_EP_Transmit(hpcd,epnum,ep.xfer_buff,epS->left);
     }
     else{
-        if(epS->type==ZLP || (epS->type==ZLPF && ep.xfer_count==ep.maxpacket)){
+        if(epS->type&0x0f==ZLP || (epS->type&0x0f==ZLPF && ep.xfer_count==ep.maxpacket)){
 #ifdef _DEBUG_USB_STACK
 #ifndef _DEBUG_USB0
         if(epnum!=0)
 #endif
-          printf("Ptrans%d: ZLP\r\n",epnum);
+            printf("Ptrans%d: ZLP\r\n",epnum);
 #endif
-            epS->type=NONE;
+            epS->type=(EtypeCallback)((uint8_t)(epS->type&0x10)|(uint8_t)NONE);
             HAL_PCD_EP_Transmit(hpcd,epnum,0,0);
         }
         else{
@@ -477,6 +634,7 @@ void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
                 }
             }
             if(epS->cb!=0){
+                epS->type&=0x1F;
                 epS->cb(epS);
             }
         }
@@ -489,8 +647,17 @@ void HAL_PCD_DataInStageCallback(PCD_HandleTypeDef *hpcd, uint8_t epnum){
 inline static void shamkaUSbMSDSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
     switch(setup->bRequest){
     case 0xFE://GET MAX LUN
-        shamkaUSBtrans(0,(uint8_t*)&STRINGS_1[3],1,0,NONE);
-        break;
+      shamkaUSBtrans(0,(uint8_t*)&STRINGS_1[3],1,0,NONE);
+      break;
+    case 0xFF://Bulk-Only Mass Storage Reset
+      HAL_PCD_EP_ClrStall(&hpcd_USB_OTG_FS,MSD_IN);
+      HAL_PCD_EP_ClrStall(&hpcd_USB_OTG_FS,MSD_OUT);
+      HAL_PCD_EP_Flush(&hpcd_USB_OTG_FS,MSD_IN);
+      HAL_PCD_EP_Flush(&hpcd_USB_OTG_FS,MSD_OUT);
+      msdState=USBD_BOT_IDLE;
+      shamkaUSBtrans(0,(uint8_t*)&STRINGS_1[3],1,0,NONE);
+      shamkaUSBrecv(MSD_OUT,(uint8_t*)&msdCbw,USBD_BOT_CBW_LENGTH,&msdCallback,NONE);
+      break;
     }
 }
 inline static void shamkaUSbHIDSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
@@ -503,18 +670,30 @@ inline static void shamkaUSbHIDSetup(PCD_HandleTypeDef *hpcd, usbSetup *setup, u
     }
 }
 inline static void usbSStandart(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_t IN){
-    uint8_t* desc;
-    uint16_t len;
+    static uint8_t* desc;
+    static uint16_t len;
     switch(setup->bRequest){
+    case 11:
+      if(setup->wIndex==MSD_IF){
+        msdState=USBD_BOT_IDLE;
+        shamkaUSBrecv(MSD_OUT,(uint8_t*)&msdCbw,USBD_BOT_CBW_LENGTH,&msdCallback,NONE);
+      }
+      break;
     case 0://GET_STATUS
         shamkaUSBtrans(0,(uint8_t*)&STRINGS_1[3],1,0,NONE);
-        
-        //shamkaUSBtrans(HID_INT_IN,&lineCoding[15],1,0,NONE);
         return;
     case 1://CLEAR FEATURE
+        if(setup->bmRequestType==2){
+          HAL_PCD_EP_ClrStall(&hpcd_USB_OTG_FS,setup->wIndex);
+          if(setup->wIndex&0x80){
+            if(usbIN[setup->wIndex&0xf].cbAfterStallClear!=NULL)
+              usbIN[setup->wIndex&0xf].cbAfterStallClear(&usbIN[setup->wIndex&0xf]);
+          }else{
+            if(usbOUT[setup->wIndex&0xf].cbAfterStallClear!=NULL)
+              usbOUT[setup->wIndex&0xf].cbAfterStallClear(&usbOUT[setup->wIndex&0xf]);
+          }
+        }
         shamkaUSBtrans(0,0,0,0,NONE);
-        
-        //shamkaUSBtrans(HID_INT_IN,&lineCoding[15],1,0,NONE);
         return;
     case 5:
         //SET ADDRESS
@@ -548,13 +727,16 @@ inline static void usbSStandart(PCD_HandleTypeDef *hpcd, usbSetup *setup, uint8_
         
         HAL_PCD_EP_Open(hpcd,MSD_OUT,64,2);
         HAL_PCD_EP_Open(hpcd,MSD_IN,64,2);
+        usbOUT[MSD_OUT&0xf].cbAfterStallClear=usbIN[MSD_IN&0xf].cbAfterStallClear=&msdCallback;
+        shamkaUSBrecv(MSD_OUT,(uint8_t*)&msdCbw,USBD_BOT_CBW_LENGTH,&msdCallback,NONE);
+        msdState=USBD_BOT_IDLE;
+        //scsi_sense_tail=0;
         
         HAL_PCD_EP_Open(hpcd,HID_INT_OUT,64,3);
         HAL_PCD_EP_Open(hpcd,HID_INT_IN,64,3);
         firstCDC=1;
-
+       
         shamkaUSBrecv(HID_INT_OUT,hidInput,MAGIC_HID_BUFF,&hidCallback,NONE);
-        shamkaUSBrecv(MSD_OUT,hidInput,MAGIC_MSD_BUFF,&msdCallback,NONE);
         shamkaUSBtrans(0,0,0,0,NONE);
         return;
     }
@@ -706,7 +888,7 @@ void tTimer(){
     }
     timeout=0;
 }
-void hidCallback(struct usbStt* p){
+uint8_t hidCallback(struct usbStt* p){
     hidReports *report=(hidReports*)p->buff;
     switch(report->reportId){
     case 2:tTimer();
@@ -736,11 +918,12 @@ void hidCallback(struct usbStt* p){
       break;
     }
     shamkaUSBrecv(HID_INT_OUT,p->buff,MAGIC_HID_BUFF,&hidCallback,NONE);
+    return 0;
 };
 
 
 //CDC
-void shamka_setSpeed(){
+uint8_t shamka_setSpeed(){
     
     huart3.Instance = USART3;
     huart3.Init.BaudRate = *(uint32_t*)&lineCoding[8];
@@ -764,8 +947,9 @@ void shamka_setSpeed(){
 #ifdef _DEBUG_USB_CDC
     printf("CDC set speed: %d\r\n",*(uint32_t*)&lineCoding[0]);
 #endif
+    return 0;
 }
-void shamka_setLineCoding(struct usbStt* p){
+uint8_t shamka_setLineCoding(struct usbStt* p){
     p=&usbOUT[p->enp&0x0f];
     if(p->sended==7){
         HAL_UART_Abort(&huart3);
@@ -785,15 +969,17 @@ void shamka_setLineCoding(struct usbStt* p){
 #endif
         HAL_UART_Receive_DMA(&huart3, &uartInput[uartBuff], 64);
     }
+    return 0;
 };
-void cdcCallback(struct usbStt* p){
+uint8_t cdcCallback(struct usbStt* p){
   while(HAL_UART_Transmit_DMA(&huart3,p->buff,p->sended)==HAL_BUSY){
     osDelay(64);
   }
   dmaCDC=1;
+  return 0;
 };
-void cdc_cp_nullF(struct usbStt* p){
-  
+uint8_t cdc_cp_nullF(struct usbStt* p){
+  return 0;
 };
 
 //USART
@@ -867,20 +1053,283 @@ void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
 }
 
 //MSD
-void msdCallback(struct usbStt* p){
-  shamkaUSBrecv(MSD_OUT,p->buff,MAGIC_MSD_BUFF,&msdCallback,NONE);
+uint8_t readToBuffFrom(uint32_t lba,uint16_t len){
+  static uint32_t lbaStart,curLba;
+  static uint16_t lenStart,curLen;
+  if(len!=0){
+    lbaStart=curLba=lba;
+    lenStart=curLen=len;
+  }
+  
+  return 0;
+}
+void SCSI_SenseCode(uint8_t sKey, uint8_t ASC){
+  scsi_sense.Skey  = sKey;
+  msdCsw.bStatus=1;
+  scsi_sense.w.ASC = ASC << 8;
+}
+uint8_t msdCallback(struct usbStt* p){
+  static uint8_t whatEP;
+  static int32_t toSend=-1,toRecv=-1,rSend=-1;
+  static uint32_t trans,innerSend;
+  static uint8_t *send,*recv;
+  
+    toSend=-1;
+    toRecv=-1;
+  
+  whatEP=msdState;
+  switch(msdState){
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  case USBD_BOT_IDLE:{
+    rSend=-1;
+    if(msdCbw.dSignature!=USBD_BOT_CBW_SIGNATURE){
+        whatEP=3;
+        goto msdCallback_setStall;
+    }
+    msdCsw.dTag=msdCbw.dTag;
+    trans=msdCbw.dDataLength;
+    msdCsw.bStatus=0;
+    switch(msdCbw.bLUN){
+    case 0:
+      break;
+    default:
+      SCSI_SenseCode(NOT_READY, MEDIUM_NOT_PRESENT);
+      msdCsw.bStatus=1;
+      if(trans>0)goto msdCallback_stallINb;
+      msdCsw.dDataResidue=trans;
+      goto msdCallback_dataIn;
+    }
+    switch(msdCbw.CB[0]){
+//------------------------------------------------------------------------------
+    case SCSI_TEST_UNIT_READY:{
+      if(msd_lun_ready[msdCbw.bLUN]){
+        toSend=0;
+      }else{
+        SCSI_SenseCode(NOT_READY,MEDIUM_NOT_PRESENT);
+      }
+      break;}
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+    case SCSI_REQUEST_SENSE:{
+      if(msdCbw.bLUN==0){
+        memset(msdInput,0,REQUEST_SENSE_DATA_LEN);
+        msdInput[0] = 0x70;		
+        msdInput[7] = REQUEST_SENSE_DATA_LEN - 6;	
+        msdInput[2] =  scsi_sense.Skey;		
+        msdInput[12] = scsi_sense.w.b.ASCQ;	
+        msdInput[13] = scsi_sense.w.b.ASC;	
+
+        send=msdInput;
+        toSend=REQUEST_SENSE_DATA_LEN;
+      }
+      break;}
+//------------------------------------------------------------------------------
+    case SCSI_READ10:{
+      if(msdCbw.bLUN==0){
+        if(!readToBuffFrom((msdCbw.CB[2]<<24)|(msdCbw.CB[3]<<16)|(msdCbw.CB[4]<<8)|(msdCbw.CB[5]),(msdCbw.CB[7]<<8)|(msdCbw.CB[8]))){
+          send=msdInput;
+          toSend=trans;
+          rSend=MAGIC_MSD_BUFF;
+        }
+      }
+      break;}
+//------------------------------------------------------------------------------
+    case SCSI_INQUIRY:{
+      
+      //trans=(msdCbw.CB[3]<<8)|(msdCbw.CB[4]);
+      if(msdCbw.bLUN==0){
+        if(msdCbw.CB[1]==1){
+          send=(uint8_t*)msd_Page00_Inquiry_Data;
+          toSend=sizeof(msd_Page00_Inquiry_Data);
+        }
+        else{
+          send=(uint8_t*)msd_LUN0_INQUIRY;
+          toSend=sizeof(msd_LUN0_INQUIRY);
+        }
+      }
+      break;}
+//------------------------------------------------------------------------------
+    case SCSI_READ_FORMAT_CAPACITIES:{
+      if(msdCbw.bLUN==0){
+        *((uint32_t*)&msdInput[0])=8<<24;
+        msdInput[4]=(uint8_t)(msd_LUN0_CAP>>24);
+        msdInput[5]=(uint8_t)(msd_LUN0_CAP>>16);
+        msdInput[6]=(uint8_t)(msd_LUN0_CAP>>8);
+        msdInput[7]=(uint8_t)(msd_LUN0_CAP>>0);
+        *((uint32_t*)&msdInput[8])=0x00020002;
+
+        send=msdInput;
+        toSend=12;
+      }
+      break;}
+//------------------------------------------------------------------------------
+    case SCSI_READ_CAPACITY10:{
+      if(msdCbw.bLUN==0){
+        msdInput[0]=(uint8_t)(msd_LUN0_CAP>>24);
+        msdInput[1]=(uint8_t)(msd_LUN0_CAP>>16);
+        msdInput[2]=(uint8_t)(msd_LUN0_CAP>>8);
+        msdInput[3]=(uint8_t)(msd_LUN0_CAP>>0);
+        *((uint32_t*)&msdInput[4])=0x00020000;
+
+        send=msdInput;
+        toSend=8;
+      }
+      break;}
+//------------------------------------------------------------------------------
+    case SCSI_MODE_SENSE6:{
+      if(msdCbw.bLUN==0){
+        send=msdInput;
+        memset(msdInput,0,8);
+        toSend=8;
+      }
+      break;}
+//------------------------------------------------------------------------------
+    case SCSI_START_STOP_UNIT:
+    case SCSI_ALLOW_MEDIUM_REMOVAL:{
+      if(msdCbw.bLUN==0){
+        toSend=0;
+      }
+      break;}
+//------------------------------------------------------------------------------
+    default:
+      SCSI_SenseCode(/*msdCbw.bLUN,*/ILLEGAL_REQUEST,INVALID_CDB);
+    }
+    break;
+  }
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  case USBD_BOT_LAST_DATA_IN:{
+msdCallback_dataIn:
+    rSend=-1;
+    send=(uint8_t*)&msdCsw;
+    toSend=USBD_BOT_CSW_LENGTH;
+    msdState=USBD_BOT_PREIDLE;
+    break;}
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  case USBD_BOT_DATA_IN:{
+    toSend=innerSend;
+    switch(msdCbw.CB[0]){
+//------------------------------------------------------------------------------
+    case SCSI_READ10:{
+      if(msdCbw.bLUN==0){
+        if(!readToBuffFrom(0,0)){
+          send=msdInput;
+        }
+      }
+      break;}
+//------------------------------------------------------------------------------
+      
+    }
+    break;}
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  case USBD_BOT_PREIDLE:
+//msdCallback_preIdle:
+    msdState=USBD_BOT_IDLE;
+    recv=(uint8_t*)&msdCbw;
+    toRecv=USBD_BOT_CBW_LENGTH;
+    break;
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  case USBD_BOT_STALL_INB:
+msdCallback_stallINb:
+    msdState=USBD_BOT_LAST_DATA_IN;
+    whatEP=1;
+    goto msdCallback_setStall;
+    break;
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+//  case USBD_BOT_ER:
+//msdCallback_erINb:
+//    msdCsw.bStatus=1;
+//    msdCsw.dDataResidue=trans;
+//    send=(uint8_t*)&msdCsw;
+//    toSend=USBD_BOT_CSW_LENGTH;
+//    msdState=USBD_BOT_PREIDLE;
+//    break;
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+//  case USBD_BOT_STALL_INB2:
+//    msdState=USBD_BOT_IDLE;
+//    recv=(uint8_t*)&msdCbw;
+//    toRecv=USBD_BOT_CBW_LENGTH;
+//
+//    break;
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  }
+  if(msdCsw.bStatus==1 && whatEP==USBD_BOT_IDLE){
+    whatEP=1;
+    if(trans>0)goto msdCallback_stallINb;
+    goto msdCallback_tr0send0;
+  }
+  if(trans==0 && toSend==0){
+msdCallback_tr0send0:
+    whatEP=USBD_BOT_LAST_DATA_IN;
+    goto msdCallback_dataIn;
+  }
+  else if(toSend>=0){
+    if(whatEP==USBD_BOT_IDLE){
+      msdCsw.dDataResidue=trans-toSend;
+      if(trans==toSend){
+        if(rSend==-1 || toSend<=rSend){
+          msdState=USBD_BOT_LAST_DATA_IN;
+        }else{
+          msdState=USBD_BOT_DATA_IN;
+          innerSend=toSend-rSend;
+          toSend=rSend;
+        }
+        msdCsw.bStatus=0;
+      }
+      else if(trans>toSend){
+        msdState=USBD_BOT_STALL_INB;
+        msdCsw.bStatus=0;
+      }
+      else{
+        toSend=trans;
+        msdState=USBD_BOT_LAST_DATA_IN;
+        msdCsw.bStatus=2;
+      }
+    }
+    else if(whatEP==USBD_BOT_DATA_IN){
+      toSend=MIN(rSend,innerSend);
+      innerSend-=toSend;
+      if(innerSend<=rSend){
+        msdState=USBD_BOT_LAST_DATA_IN;
+      }
+    }
+    
+    shamkaUSBtrans(MSD_IN,send,toSend,&msdCallback,NONE);
+  }
+  if(toRecv>=0)shamkaUSBrecv(MSD_OUT,recv,MIN(MAGIC_MSD_BUFF,toRecv),&msdCallback,NONE);
+  return 0;
+msdCallback_setStall:
+  if(whatEP&1)HAL_PCD_EP_SetStall(&hpcd_USB_OTG_FS,MSD_IN);
+  if(whatEP&2){
+    HAL_PCD_EP_SetStall(&hpcd_USB_OTG_FS,MSD_OUT);
+  }
+  if(whatEP&4){
+    shamkaUSBrecv(p->enp,(uint8_t*)&msdCbw,USBD_BOT_CBW_LENGTH,&msdCallback,NONE);
+  }
+  return 0;
 };
 
 //FREERTOS
 void StartDefaultTask(void const * argument){
-    static uint32_t scrollOn=0;
-    static uint8_t buffSCON[9]={21,0,0,0x47,0,0,0,0,0};
-    static uint8_t buffSCOFF[9]={21,0,0,0,0,0,0,0,0};
+    static uint32_t scrollOn=4;
+    static const uint8_t buffSCON[9]={21,0,0,0x47,0,0,0,0,0};
+    static const uint8_t buffSCOFF[9]={21,0,0,0,0,0,0,0,0};
     
     static char btLedsSend[]="NUM: 0\r\nCAPS: 0\r\nSCROLL: 0\r\n\r\n";
     
     memset(lineCoding,0,sizeof(lineCoding));
     memset(&hiddata,0,sizeof(hiddata));
+    memset(&usbIN,0,sizeof(usbIN));
+    memset(&usbOUT,0,sizeof(usbOUT));
+    do{
+      scrollOn--;
+      usbIN[scrollOn].enp=0x80|scrollOn;
+      usbOUT[scrollOn].enp=scrollOn;
+    }while(scrollOn>0);
+    
+    msdCsw.dSignature=USBD_BOT_CSW_SIGNATURE;
 
     HAL_PCDEx_SetRxFiFo(&hpcd_USB_OTG_FS, 0x80);
     HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 0, 0x30);
@@ -895,13 +1344,13 @@ void StartDefaultTask(void const * argument){
         scrollOn++;
         if(scrollOn>30){
           osDelay(50);
-          shUSBtrans(HID_INT_IN,buffSCON,sizeof(buffSCON));
+          shUSBtrans(HID_INT_IN,(uint8_t*)buffSCON,sizeof(buffSCON));
           osDelay(100);
-          shUSBtrans(HID_INT_IN,buffSCOFF,sizeof(buffSCOFF));
+          shUSBtrans(HID_INT_IN,(uint8_t*)buffSCOFF,sizeof(buffSCOFF));
           osDelay(1000);
-          shUSBtrans(HID_INT_IN,buffSCON,sizeof(buffSCON));
+          shUSBtrans(HID_INT_IN,(uint8_t*)buffSCON,sizeof(buffSCON));
           osDelay(100);
-          shUSBtrans(HID_INT_IN,buffSCOFF,sizeof(buffSCOFF));
+          shUSBtrans(HID_INT_IN,(uint8_t*)buffSCOFF,sizeof(buffSCOFF));
           scrollOn=0;
         }
       }
@@ -922,12 +1371,13 @@ void StartDefaultTask(void const * argument){
 
 
 usbTransStruct *foFree;
-void memFreeAfterSend(struct usbStt* p){
+uint8_t memFreeAfterSend(struct usbStt* p){
   if(foFree!=NULL){
     free(foFree);
     foFree=NULL;
   }
   osSemaphoreRelease(goToSendUSBHandle);
+  return 0;
 }
 void usbTransmit(void const * argument){
   for(;;)

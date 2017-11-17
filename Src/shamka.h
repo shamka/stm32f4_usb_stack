@@ -28,20 +28,23 @@
 
 //TYPEDEFS
 struct usbStt;
-typedef void (*Tcallback)(struct usbStt*);
+typedef uint8_t (*Tcallback)(struct usbStt*);
 
 typedef enum{
   NONE=0,
   ZLPF=1,
   ZLP=2,
+  CNONE=16,
+  CZLPF=17,
+  CZLP=18,
 }EtypeCallback;
 
 
 //PROTO FUNCTIONS
 
 void HAL_UART_RxIdleCallback(UART_HandleTypeDef *huart);
-void shamkaUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(struct usbStt*),EtypeCallback type);
-void shamkaUSBrecv(uint8_t epnum,uint8_t* buff,uint32_t len,void(*callback)(struct usbStt*),EtypeCallback type);
+void shamkaUSBtrans(uint8_t epnum,uint8_t* buff,uint32_t len,uint8_t(*callback)(struct usbStt*),EtypeCallback type);
+void shamkaUSBrecv(uint8_t epnum,uint8_t* buff,uint32_t len,uint8_t(*callback)(struct usbStt*),EtypeCallback type);
 
 
 #endif
