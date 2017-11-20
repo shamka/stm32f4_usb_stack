@@ -402,8 +402,11 @@ uint8_t cdcInput[CDCINPUT_BUFF+4];
 uint8_t uartInput[UARTINPUT_BUFF*2+4];
 uint8_t lineCoding[16];
 volatile uint8_t uartBuff,firstCDC;
+
 extern UART_HandleTypeDef huart3;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
+extern I2C_HandleTypeDef hi2c1;
+
 extern osTimerId statChangeHandle;
 extern osThreadId usbTransHandle;
 extern osMessageQId usbTransmitQueueHandle;
@@ -982,6 +985,37 @@ uint8_t cdc_cp_nullF(struct usbStt* p){
   return 0;
 };
 
+//IIC
+void toLCD(uint8_t *b,uint16_t l){
+    static int16_t bbf;
+    static int16_t pos;
+    static HAL_StatusTypeDef er;
+    static unsigned char Ok[]="OK\r\n";
+    static unsigned char Error[]="ERROR\r\n";
+    bbf=-1;
+    pos=-1;
+    while((++pos)<l){
+        if(b[pos]==10 || b[pos]==13)break;
+        if(b[pos]==' ')continue;
+        if((b[pos]>='0' && b[pos]<='9') || (b[pos]>='a' && b[pos]<='f')){
+            if(bbf==-1){
+                bbf=(b[pos]-((b[pos]>'9')?0x37:0x30))<<4;
+            }else{
+                bbf|=(b[pos]-((b[pos]>'9')?0x37:0x30));
+                while (HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)(0x3f<<1), 3, 500) != HAL_OK) {osDelay(10); }
+                er = HAL_I2C_Master_Transmit(&hi2c1, (uint16_t)(0x3f<<1),(uint8_t*)&bbf,1,5000);
+                if(er==HAL_OK){
+                    while(HAL_UART_Transmit(&huart3,Ok,sizeof(Ok)-1,500)!=HAL_OK){osDelay(1);}
+                }else{
+                    while(HAL_UART_Transmit(&huart3,Error,sizeof(Error)-1,500)!=HAL_OK){osDelay(1);}
+                }
+                dmaCDC=0;
+                bbf=-1;
+            }
+        }
+    }
+}
+
 //USART
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
   if(dmaCDC==1){
@@ -1035,6 +1069,7 @@ void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
         }
         if(uartBuff==0){
             HAL_UART_Receive_DMA(&huart3, &uartInput[MAGIC_UARTRX_BUFF], MAGIC_UARTRX_BUFF);
+            toLCD(&uartInput[0],rxXferCount);
             //shamkaUSBtrans(CDC_IN,&uartInput[0],rxXferCount,0,NONE);
             if(lineCoding[7]&0x11)shUSBtrans(CDC_IN,&uartInput[0],rxXferCount);
             uartBuff=MAGIC_UARTRX_BUFF;
@@ -1042,6 +1077,7 @@ void HAL_UART_RxIdleCallback(UART_HandleTypeDef* huart){
         else{
             HAL_UART_Receive_DMA(&huart3, &uartInput[0], MAGIC_UARTRX_BUFF);
             //shamkaUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],rxXferCount,0,NONE);
+            toLCD(&uartInput[MAGIC_UARTRX_BUFF],rxXferCount);
             if(lineCoding[7]&0x11)shUSBtrans(CDC_IN,&uartInput[MAGIC_UARTRX_BUFF],rxXferCount);
             uartBuff=0;
         }
@@ -1312,6 +1348,32 @@ msdCallback_setStall:
 };
 
 //FREERTOS
+usbTransStruct *foFree;
+uint8_t memFreeAfterSend(struct usbStt* p){
+  if(foFree!=NULL){
+    free(foFree);
+    foFree=NULL;
+  }
+  osSemaphoreRelease(goToSendUSBHandle);
+  return 0;
+}
+void usbTransmit(void const * argument){
+  for(;;)
+  {
+    if((osSemaphoreWait(goToSendUSBHandle,5000)==0) && (foFree!=NULL)){
+      free(foFree);
+#ifdef _DEBUG_USB_CDC
+      printf("SORRY CDC IN TIMEOUT");
+#endif
+      foFree=NULL;
+    };
+    osEvent q = osMessageGet(usbTransmitQueueHandle,osWaitForever);
+    foFree = (usbTransStruct*)q.value.p;
+    shamkaUSBtrans(foFree->epnum,foFree->buff,foFree->len,&memFreeAfterSend,NONE);
+  }
+}
+
+
 void StartDefaultTask(void const * argument){
     static uint32_t scrollOn=4;
     static const uint8_t buffSCON[9]={21,0,0,0x47,0,0,0,0,0};
@@ -1330,7 +1392,11 @@ void StartDefaultTask(void const * argument){
     }while(scrollOn>0);
     
     msdCsw.dSignature=USBD_BOT_CSW_SIGNATURE;
-
+    
+    uartBuff=0;
+    HAL_UART_Receive_DMA(&huart3, &uartInput[0], MAGIC_UARTRX_BUFF);
+    
+    
     HAL_PCDEx_SetRxFiFo(&hpcd_USB_OTG_FS, 0x80);
     HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 0, 0x30);
     HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 1, 0x30);
@@ -1369,28 +1435,16 @@ void StartDefaultTask(void const * argument){
     }
 }
 
-
-usbTransStruct *foFree;
-uint8_t memFreeAfterSend(struct usbStt* p){
-  if(foFree!=NULL){
-    free(foFree);
-    foFree=NULL;
-  }
-  osSemaphoreRelease(goToSendUSBHandle);
-  return 0;
-}
-void usbTransmit(void const * argument){
-  for(;;)
-  {
-    if((osSemaphoreWait(goToSendUSBHandle,5000)==0) && (foFree!=NULL)){
-      free(foFree);
-#ifdef _DEBUG_USB_CDC
-      printf("SORRY CDC IN TIMEOUT");
-#endif
-      foFree=NULL;
-    };
-    osEvent q = osMessageGet(usbTransmitQueueHandle,osWaitForever);
-    foFree = (usbTransStruct*)q.value.p;
-    shamkaUSBtrans(foFree->epnum,foFree->buff,foFree->len,&memFreeAfterSend,NONE);
-  }
+void taskIIC(void const * argument){
+taskIIC_start:    
+    while (HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)(0x3f<<1), 3, 500) != HAL_OK) {osDelay(10); }
+    HAL_GPIO_WritePin(LED_GPIO_Port,LED_Pin,GPIO_PIN_SET);
+    
+    while(1){
+         osDelay(5000);
+         if(HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)(0x3f<<1), 3, 500) != HAL_OK){
+            HAL_GPIO_WritePin(LED_GPIO_Port,LED_Pin,GPIO_PIN_RESET);
+            goto taskIIC_start;
+         }
+    }
 }

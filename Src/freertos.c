@@ -58,6 +58,7 @@
 /* Variables -----------------------------------------------------------------*/
 osThreadId defaultTaskHandle;
 osThreadId usbTransHandle;
+osThreadId myTask03Handle;
 osMessageQId usbTransmitQueueHandle;
 osTimerId statChangeHandle;
 osSemaphoreId goToSendUSBHandle;
@@ -69,6 +70,7 @@ osSemaphoreId goToSendUSBHandle;
 /* Function prototypes -------------------------------------------------------*/
 void StartDefaultTask(void const * argument);
 void usbTransmit(void const * argument);
+void taskIIC(void const * argument);
 void statChangeTimer(void const * argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
@@ -117,6 +119,10 @@ void MX_FREERTOS_Init(void) {
   osThreadDef(usbTrans, usbTransmit, osPriorityBelowNormal, 0, 90);
   usbTransHandle = osThreadCreate(osThread(usbTrans), NULL);
 
+  /* definition and creation of myTask03 */
+  osThreadDef(myTask03, taskIIC, osPriorityBelowNormal, 0, 90);
+  myTask03Handle = osThreadCreate(osThread(myTask03), NULL);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -154,6 +160,18 @@ __weak void usbTransmit(void const * argument)
     osDelay(1);
   }
   /* USER CODE END usbTransmit */
+}
+
+/* taskIIC function */
+__weak void taskIIC(void const * argument)
+{
+  /* USER CODE BEGIN taskIIC */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END taskIIC */
 }
 
 /* statChangeTimer function */

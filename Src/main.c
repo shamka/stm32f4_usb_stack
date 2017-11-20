@@ -51,6 +51,7 @@
 #include "stm32f4xx_hal.h"
 #include "cmsis_os.h"
 #include "dma.h"
+#include "i2c.h"
 #include "usart.h"
 #include "usb_otg.h"
 #include "gpio.h"
@@ -109,6 +110,7 @@ int main(void)
   MX_FSMC_Init();
   MX_USART3_UART_Init();
   MX_USB_OTG_FS_PCD_Init();
+  MX_I2C1_Init();
 
   /* USER CODE BEGIN 2 */
 #endif
@@ -118,6 +120,7 @@ int main(void)
   MX_FSMC_Init();
   MX_USART3_UART_Init();
   MX_USB_OTG_FS_PCD_Init();
+  MX_I2C1_Init();
   
   /* USER CODE END 2 */
 
